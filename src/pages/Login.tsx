@@ -35,13 +35,7 @@ const Login = () => {
           title: "Logged in successfully",
           description: `Welcome back, ${user.name}!`,
         });
-        
-        // If this is a new user (username is 'newuser'), redirect to wizard
-        if (username === "newuser") {
-          navigate("/");
-        } else {
-          navigate("/");
-        }
+        navigate("/");
       } else {
         toast({
           title: "Login failed",
