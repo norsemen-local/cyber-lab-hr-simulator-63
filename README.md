@@ -3,9 +3,9 @@
 
 This project is a deliberately vulnerable HR application designed for cybersecurity training and education. It demonstrates common security vulnerabilities found in web applications.
 
-## IMPORTANT DISCLAIMER
+## ⚠️ IMPORTANT DISCLAIMER
 
-⚠️ **WARNING: This application is intentionally vulnerable and should NEVER be deployed in a production environment or with real data.** ⚠️
+**WARNING: This application is intentionally vulnerable and should NEVER be deployed in a production environment or with real data.**
 
 This application is provided for educational purposes only. By using this software, you acknowledge that:
 
@@ -17,7 +17,9 @@ This application is provided for educational purposes only. By using this softwa
 
 **Usage of this application for any malicious purposes, unauthorized testing, or attacks against systems without explicit permission is illegal and unethical.**
 
-## Application Purpose
+---
+
+## 📋 Application Purpose
 
 This HR application serves as a hands-on training tool for:
 
@@ -28,7 +30,7 @@ This HR application serves as a hands-on training tool for:
 
 By deliberately implementing common vulnerabilities, this application provides a safe environment to practice identifying, exploiting, and remediating security issues without impacting real systems.
 
-## Application Overview
+## 🔍 Application Overview
 
 This HR application simulates a typical enterprise human resources system with the following features:
 
@@ -41,7 +43,9 @@ This HR application simulates a typical enterprise human resources system with t
 - New employee onboarding wizard
 - PDF generation of employee data
 
-## Security Vulnerabilities
+---
+
+## 🛡️ Security Vulnerabilities
 
 This application has been deliberately designed with the following vulnerabilities:
 
@@ -72,6 +76,8 @@ console.log(`SELECT * FROM users WHERE username='${username}' AND password='${pa
 - The third example similarly bypasses authentication with a variation of the technique
 
 **Mitigation (for learning):** Use parameterized queries or prepared statements instead of string concatenation.
+
+---
 
 ### 2. Server-Side Request Forgery (SSRF)
 
@@ -135,6 +141,8 @@ After exploiting the SSRF vulnerability, you can use the EC2 instance's IAM role
 
 This attack works because the EC2 instance has been granted IAM permissions to connect to other instances without requiring additional credentials.
 
+---
+
 ### 3. Insecure File Upload
 
 The application allows unrestricted file uploads:
@@ -155,6 +163,8 @@ const handleFileUpload = (e) => {
 - Upload extremely large files to cause denial of service
 - Upload files with embedded malicious scripts
 
+---
+
 ### 4. Sensitive Data Exposure
 
 The application displays and processes sensitive information without proper protection:
@@ -164,6 +174,8 @@ The application displays and processes sensitive information without proper prot
 - Salary information
 - Personal identifying information
 
+---
+
 ### 5. Insecure Infrastructure Configuration
 
 The application is designed to be deployed with:
@@ -172,7 +184,9 @@ The application is designed to be deployed with:
 - Unprotected EC2 instances
 - Exposed secrets in GitHub Actions configuration
 
-## Authentication Information
+---
+
+## 🔑 Authentication Information
 
 For testing purposes, you can use the following credentials:
 
@@ -182,7 +196,9 @@ For testing purposes, you can use the following credentials:
 
 To register a new account, use company code: `WelcomeAboard`
 
-## Deployment Architecture (Security Training)
+---
+
+## 🏗️ Deployment Architecture (Security Training)
 
 For training purposes, the application is designed to be deployed as:
 
@@ -192,7 +208,9 @@ For training purposes, the application is designed to be deployed as:
 4. S3 bucket for static file storage
 5. Deployment using GitHub Actions with Terraform
 
-## How to Use for Training
+---
+
+## 📚 How to Use for Training
 
 This application can be used to:
 1. Practice identifying security vulnerabilities through code review
@@ -200,7 +218,9 @@ This application can be used to:
 3. Train security teams on proper remediation techniques
 4. Practice secure DevOps and infrastructure as code
 
-## Recommended Security Controls (for discussion)
+---
+
+## 🔒 Recommended Security Controls (for discussion)
 
 After exploring the vulnerabilities, discuss how to implement proper security controls:
 
@@ -212,6 +232,8 @@ After exploring the vulnerabilities, discuss how to implement proper security co
 - Secure infrastructure configuration
 - Secret management
 - Network security controls
+
+---
 
 ## License
 
