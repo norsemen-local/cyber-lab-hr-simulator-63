@@ -54,19 +54,19 @@ jobs:
         if: ${{ github.event.inputs.action != 'destroy' }}
         run: |
           cd terraform
-          terraform plan -var="db_username=${{ secrets.DB_USERNAME }}" -var="db_password=${{ secrets.DB_PASSWORD }}"
+          terraform plan -var="db_username=admin" -var="db_password=password123"
         
       - name: Terraform Apply
         if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.action != 'destroy' }}
         run: |
           cd terraform
-          terraform apply -auto-approve -var="db_username=${{ secrets.DB_USERNAME }}" -var="db_password=${{ secrets.DB_PASSWORD }}"
+          terraform apply -auto-approve -var="db_username=admin" -var="db_password=password123"
       
       - name: Terraform Destroy
         if: ${{ github.event.inputs.action == 'destroy' }}
         run: |
           cd terraform
-          terraform destroy -auto-approve -var="db_username=${{ secrets.DB_USERNAME }}" -var="db_password=${{ secrets.DB_PASSWORD }}"
+          terraform destroy -auto-approve -var="db_username=admin" -var="db_password=password123"
           
       - name: Deploy application to EC2
         if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.action != 'destroy' }}
@@ -79,17 +79,17 @@ jobs:
           cd ..
           tar -czf app.tar.gz dist
           
-          # Copy files to EC2
-          scp -o StrictHostKeyChecking=no -i ${{ secrets.SSH_PRIVATE_KEY }} app.tar.gz ec2-user@$EC2_IP:/home/ec2-user/
+          # Copy files to EC2 using scp without key verification
+          scp -o StrictHostKeyChecking=no app.tar.gz ec2-user@$EC2_IP:/home/ec2-user/
           
-          # SSH into the instance and deploy
-          ssh -o StrictHostKeyChecking=no -i ${{ secrets.SSH_PRIVATE_KEY }} ec2-user@$EC2_IP << 'EOF'
+          # SSH into the instance and deploy without key verification
+          ssh -o StrictHostKeyChecking=no ec2-user@$EC2_IP << 'EOF'
             mkdir -p /var/www/html
             tar -xzf app.tar.gz -C /var/www/html
-            # Create database configuration with credentials (deliberately insecure for demo)
+            # Create database configuration with hardcoded credentials
             echo "db_config:" > /home/ec2-user/db_config.yaml
-            echo "  username: ${{ secrets.DB_USERNAME }}" >> /home/ec2-user/db_config.yaml
-            echo "  password: ${{ secrets.DB_PASSWORD }}" >> /home/ec2-user/db_config.yaml
+            echo "  username: admin" >> /home/ec2-user/db_config.yaml
+            echo "  password: password123" >> /home/ec2-user/db_config.yaml
             echo "  host: $(aws rds describe-db-instances --db-instance-identifier hr-portal-db --query 'DBInstances[0].Endpoint.Address' --output text)" >> /home/ec2-user/db_config.yaml
             # Setup and start the application (simplified)
             sudo systemctl restart nginx

@@ -233,27 +233,8 @@ Add these secrets in your GitHub repository (Settings → Secrets and variables 
 - `AWS_ACCESS_KEY_ID`: Your AWS access key ID
 - `AWS_SECRET_ACCESS_KEY`: Your AWS secret access key
 - `AWS_REGION`: Your preferred AWS region (e.g., `us-east-1`)
-- `DB_USERNAME`: Username for the RDS instance
-- `DB_PASSWORD`: Password for the RDS instance
-- `SSH_PRIVATE_KEY`: A private SSH key for connecting to EC2 instances
 
-### Step 3: Create SSH Key Pair
-1. Generate a new SSH key pair:
-   ```bash
-   ssh-keygen -t rsa -b 4096 -f hr_portal_key -N ""
-   ```
-2. Upload the public key to AWS:
-   ```bash
-   aws ec2 import-key-pair --key-name hr-portal-key \
-     --public-key-material fileb://hr_portal_key.pub
-   ```
-3. Store the private key content as `SSH_PRIVATE_KEY` in GitHub Secrets
-
-### Step 4: Update Terraform Variables
-1. Modify `terraform/variables.tf` to match your environment if needed
-2. Ensure the `key_pair_name` variable matches your imported key pair name
-
-### Step 5: Trigger Deployment
+### Step 3: Trigger Deployment
 1. Commit and push your changes to the main branch:
    ```bash
    git add .
@@ -263,11 +244,11 @@ Add these secrets in your GitHub repository (Settings → Secrets and variables 
 2. The GitHub Actions workflow will automatically trigger deployment
 3. Monitor the workflow progress in the Actions tab of your GitHub repository
 
-### Step 6: Access Your Application
+### Step 4: Access Your Application
 1. After successful deployment, find the EC2 public IP in the workflow output
 2. Access the application at `http://[EC2-PUBLIC-IP]`
 
-### Step 7: Cleanup
+### Step 5: Cleanup
 To avoid unexpected charges, remember to destroy resources when done:
 1. Run manually in the Actions tab by selecting the workflow and clicking "Run workflow"
 2. Choose the "Terraform Destroy" option
