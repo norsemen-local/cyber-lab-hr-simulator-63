@@ -35,6 +35,7 @@ console.log(`SELECT * FROM users WHERE username='${username}' AND password='${pa
 - Enter `' OR '1'='1` as the username and anything as the password
 - This would result in the SQL query: `SELECT * FROM users WHERE username='' OR '1'='1' AND password='anything'`
 - Since `'1'='1'` is always true, this would bypass authentication
+- Alternatively, you can use: `admin'--` as the username, which comments out the password check entirely
 
 ### 2. Server-Side Request Forgery (SSRF)
 
@@ -86,6 +87,16 @@ The application is designed to be deployed with:
 - Insecure S3 bucket configurations
 - Unprotected EC2 instances
 - Exposed secrets in GitHub Actions configuration
+
+## Authentication Information
+
+For testing purposes, you can use the following credentials:
+
+- Regular Employee: Username `john`, any password (or SQL injection)
+- Manager: Username `jane`, any password (or SQL injection)
+- HR Admin: Username `admin`, any password (or SQL injection)
+
+To register a new account, use company code: `WelcomeAboard`
 
 ## Deployment Architecture (Security Training)
 

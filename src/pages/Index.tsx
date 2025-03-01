@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,14 +14,14 @@ import {
   User, 
   LogIn,
   Lock,
-  CheckCircle
+  CheckCircle,
+  LogOut
 } from "lucide-react";
+import { Navigate, useNavigate } from "react-router-dom";
+import { getCurrentUser, logout, updateCompanyCode, getCompanyCode } from "../services/authService";
+import { useToast } from "@/components/ui/use-toast";
 
 const Index = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [currentUser, setCurrentUser] = useState(null);
   const [isNewUser, setIsNewUser] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [userDetails, setUserDetails] = useState({
@@ -37,25 +37,56 @@ const Index = () => {
     manager: "",
     startDate: "",
   });
+  const [companyCodeInput, setCompanyCodeInput] = useState("");
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const currentUser = getCurrentUser();
   
-  // Mock authentication - intentionally vulnerable for security demonstration
-  const handleLogin = (e) => {
-    e.preventDefault();
-    // Insecure direct authentication - vulnerable to SQL injection
-    console.log(`Attempting SQL query: SELECT * FROM users WHERE username='${username}' AND password='${password}'`);
-    
-    // For demo purposes, any login works
-    setIsLoggedIn(true);
-    setCurrentUser({
-      id: 1,
-      name: username || "John Doe",
-      role: "employee",
-      avatar: "/placeholder.svg"
-    });
-    
-    // Check if this is a new user
-    if (username === "newuser") {
+  // Check if user is logged in
+  if (!currentUser) {
+    return <Navigate to="/login" />;
+  }
+  
+  // For new users, show the onboarding wizard
+  useEffect(() => {
+    if (currentUser.name === "newuser") {
       setIsNewUser(true);
+    }
+  }, [currentUser]);
+  
+  const handleLogout = () => {
+    logout();
+    toast({
+      title: "Logged out",
+      description: "You have been successfully logged out",
+    });
+    navigate("/login");
+  };
+  
+  const handleUpdateCompanyCode = () => {
+    if (!companyCodeInput) {
+      toast({
+        title: "Error",
+        description: "Please enter a new company code",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const success = updateCompanyCode(companyCodeInput, currentUser);
+    
+    if (success) {
+      toast({
+        title: "Company code updated",
+        description: `The company registration code has been updated to "${companyCodeInput}"`,
+      });
+      setCompanyCodeInput("");
+    } else {
+      toast({
+        title: "Update failed",
+        description: "Only HR personnel can update the company code",
+        variant: "destructive",
+      });
     }
   };
   
@@ -68,7 +99,10 @@ const Index = () => {
       console.log(`SSRF vulnerable endpoint: /api/upload?url=s3://employee-bucket/${currentUser?.id}/${file.name}`);
       
       // Mock success response
-      alert(`File ${file.name} uploaded successfully!`);
+      toast({
+        title: "File uploaded",
+        description: `${file.name} has been uploaded successfully`,
+      });
     }
   };
   
@@ -79,52 +113,12 @@ const Index = () => {
     
     setIsNewUser(false);
     setWizardStep(1);
+    
+    toast({
+      title: "Onboarding complete",
+      description: "Your profile has been set up successfully",
+    });
   };
-  
-  // Render login screen if not logged in
-  if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-[350px]">
-          <CardHeader>
-            <CardTitle className="text-2xl text-center">HR Portal</CardTitle>
-            <CardDescription className="text-center">
-              Login to access your employee dashboard
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-2">
-                <Input 
-                  id="username" 
-                  placeholder="Username" 
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Input 
-                  id="password" 
-                  type="password" 
-                  placeholder="Password" 
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-              <Button type="submit" className="w-full">
-                <LogIn className="mr-2 h-4 w-4" /> Log In
-              </Button>
-            </form>
-          </CardContent>
-          <CardFooter>
-            <p className="text-xs text-center w-full text-gray-500">
-              This application is deliberately vulnerable for security training purposes.
-            </p>
-          </CardFooter>
-        </Card>
-      </div>
-    );
-  }
   
   // Render new user wizard
   if (isNewUser) {
@@ -280,6 +274,9 @@ const Index = () => {
               <AvatarImage src={currentUser?.avatar} />
               <AvatarFallback>{currentUser?.name.substring(0, 2).toUpperCase()}</AvatarFallback>
             </Avatar>
+            <Button variant="outline" size="sm" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" /> Logout
+            </Button>
           </div>
         </div>
       </header>
@@ -622,11 +619,82 @@ const Index = () => {
                 <CardDescription>Manage employees and company data</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-12">
-                  <Lock className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                  <h3 className="text-lg font-medium">Admin Access Restricted</h3>
-                  <p className="text-gray-500">Only HR personnel can access this section</p>
-                </div>
+                {currentUser?.role === "hr" ? (
+                  <div className="space-y-6">
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium">Company Settings</h3>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Current Company Registration Code</label>
+                        <div className="flex items-center space-x-2">
+                          <Input value={getCompanyCode()} readOnly />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Update Company Registration Code</label>
+                        <div className="flex items-center space-x-2">
+                          <Input 
+                            value={companyCodeInput} 
+                            onChange={(e) => setCompanyCodeInput(e.target.value)} 
+                            placeholder="New company code"
+                          />
+                          <Button onClick={handleUpdateCompanyCode}>Update</Button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium">Employee Management</h3>
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-3 px-4">ID</th>
+                              <th className="text-left py-3 px-4">Name</th>
+                              <th className="text-left py-3 px-4">Username</th>
+                              <th className="text-left py-3 px-4">Role</th>
+                              <th className="text-left py-3 px-4">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="border-b">
+                              <td className="py-3 px-4">1</td>
+                              <td className="py-3 px-4">John Doe</td>
+                              <td className="py-3 px-4">john</td>
+                              <td className="py-3 px-4">employee</td>
+                              <td className="py-3 px-4">
+                                <Button variant="ghost" size="sm">Edit</Button>
+                              </td>
+                            </tr>
+                            <tr className="border-b">
+                              <td className="py-3 px-4">2</td>
+                              <td className="py-3 px-4">Jane Smith</td>
+                              <td className="py-3 px-4">jane</td>
+                              <td className="py-3 px-4">manager</td>
+                              <td className="py-3 px-4">
+                                <Button variant="ghost" size="sm">Edit</Button>
+                              </td>
+                            </tr>
+                            <tr className="border-b">
+                              <td className="py-3 px-4">3</td>
+                              <td className="py-3 px-4">Admin User</td>
+                              <td className="py-3 px-4">admin</td>
+                              <td className="py-3 px-4">hr</td>
+                              <td className="py-3 px-4">
+                                <Button variant="ghost" size="sm">Edit</Button>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Lock className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <h3 className="text-lg font-medium">Admin Access Restricted</h3>
+                    <p className="text-gray-500">Only HR personnel can access this section</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
