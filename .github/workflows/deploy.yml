@@ -5,6 +5,15 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - destroy
 
 jobs:
   deploy:
@@ -19,9 +28,11 @@ jobs:
           node-version: '18'
           
       - name: Install dependencies
+        if: ${{ github.event.inputs.action != 'destroy' }}
         run: npm ci
         
       - name: Build application
+        if: ${{ github.event.inputs.action != 'destroy' }}
         run: npm run build
         
       - name: Configure AWS credentials
@@ -40,17 +51,25 @@ jobs:
           terraform init
         
       - name: Terraform Plan
+        if: ${{ github.event.inputs.action != 'destroy' }}
         run: |
           cd terraform
           terraform plan -var="db_username=${{ secrets.DB_USERNAME }}" -var="db_password=${{ secrets.DB_PASSWORD }}"
         
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main'
+        if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.action != 'destroy' }}
         run: |
           cd terraform
           terraform apply -auto-approve -var="db_username=${{ secrets.DB_USERNAME }}" -var="db_password=${{ secrets.DB_PASSWORD }}"
+      
+      - name: Terraform Destroy
+        if: ${{ github.event.inputs.action == 'destroy' }}
+        run: |
+          cd terraform
+          terraform destroy -auto-approve -var="db_username=${{ secrets.DB_USERNAME }}" -var="db_password=${{ secrets.DB_PASSWORD }}"
           
       - name: Deploy application to EC2
+        if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.action != 'destroy' }}
         run: |
           # Get the public IP of the EC2 instance from Terraform output
           cd terraform
