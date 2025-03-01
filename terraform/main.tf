@@ -3,15 +3,25 @@ provider "aws" {
   region = var.aws_region
 }
 
+# Define common tags to be applied to all resources
+locals {
+  common_tags = {
+    App = "Demo-HR-Application"
+    Note = "For security testing"
+    Name = "DemoHRApp"
+    Link = "https://github.com/SilentProcess87/cyber-lab-hr-simulator"
+  }
+}
+
 # VPC Configuration
 resource "aws_vpc" "hr_portal_vpc" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
   enable_dns_hostnames = true
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-vpc"
-  }
+  })
 }
 
 # Public Subnet
@@ -21,9 +31,9 @@ resource "aws_subnet" "public_subnet" {
   map_public_ip_on_launch = true
   availability_zone       = "${var.aws_region}a"
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-public-subnet"
-  }
+  })
 }
 
 # Private Subnet for RDS
@@ -32,9 +42,9 @@ resource "aws_subnet" "private_subnet_1" {
   cidr_block        = "10.0.2.0/24"
   availability_zone = "${var.aws_region}a"
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-private-subnet-1"
-  }
+  })
 }
 
 # Second Private Subnet for RDS (required for DB subnet group)
@@ -43,18 +53,18 @@ resource "aws_subnet" "private_subnet_2" {
   cidr_block        = "10.0.3.0/24"
   availability_zone = "${var.aws_region}b"
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-private-subnet-2"
-  }
+  })
 }
 
 # Internet Gateway
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.hr_portal_vpc.id
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-igw"
-  }
+  })
 }
 
 # Route Table for Public Subnet
@@ -66,9 +76,9 @@ resource "aws_route_table" "public_route_table" {
     gateway_id = aws_internet_gateway.igw.id
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-public-route-table"
-  }
+  })
 }
 
 # Associate Public Subnet with Route Table
@@ -118,9 +128,9 @@ resource "aws_security_group" "ec2_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-ec2-sg"
-  }
+  })
 }
 
 # Security Group for RDS
@@ -146,9 +156,9 @@ resource "aws_security_group" "rds_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-rds-sg"
-  }
+  })
 }
 
 # RDS Subnet Group
@@ -156,9 +166,9 @@ resource "aws_db_subnet_group" "rds_subnet_group" {
   name       = "hr-portal-rds-subnet-group"
   subnet_ids = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id]
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "HR Portal RDS Subnet Group"
-  }
+  })
 }
 
 # RDS MySQL Instance
@@ -180,9 +190,9 @@ resource "aws_db_instance" "hr_portal_db" {
   backup_retention_period = 7
   multi_az                = false
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-db"
-  }
+  })
 }
 
 # IAM Role for EC2 to connect to other EC2 instances
@@ -202,9 +212,9 @@ resource "aws_iam_role" "ec2_role" {
     ]
   })
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-ec2-role"
-  }
+  })
 }
 
 # IAM Policy for EC2 to connect to other EC2 instances
@@ -225,6 +235,8 @@ resource "aws_iam_policy" "ec2_ssh_policy" {
       }
     ]
   })
+
+  tags = local.common_tags
 }
 
 # Attach policy to role
@@ -243,6 +255,8 @@ resource "aws_iam_role_policy_attachment" "ssm_policy_attachment" {
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "hr-portal-ec2-profile"
   role = aws_iam_role.ec2_role.name
+
+  tags = local.common_tags
 }
 
 # EC2 Instance
@@ -305,9 +319,9 @@ resource "aws_instance" "hr_portal_ec2" {
     systemctl restart nginx
   EOF
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "hr-portal-ec2"
-  }
+  })
 
   depends_on = [aws_internet_gateway.igw]
 }
@@ -320,6 +334,8 @@ resource "aws_api_gateway_rest_api" "hr_portal_api" {
   endpoint_configuration {
     types = ["REGIONAL"]
   }
+
+  tags = local.common_tags
 }
 
 # API Gateway Resource
@@ -357,6 +373,8 @@ resource "aws_api_gateway_deployment" "api_deployment" {
   lifecycle {
     create_before_destroy = true
   }
+
+  tags = local.common_tags
 }
 
 # Outputs
