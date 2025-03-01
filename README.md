@@ -1,69 +1,123 @@
-# Welcome to your Lovable project
 
-## Project info
+# HR Cyber Security Lab Simulator
 
-**URL**: https://lovable.dev/projects/626ea554-98f6-4b53-977f-a5a965a68a6e
+This project is a deliberately vulnerable HR application designed for cybersecurity training and education. It demonstrates common security vulnerabilities found in web applications.
 
-## How can I edit this code?
+⚠️ **WARNING: This application is intentionally vulnerable and should NEVER be deployed in a production environment or with real data.** ⚠️
 
-There are several ways of editing your application.
+## Application Overview
 
-**Use Lovable**
+This HR application simulates a typical enterprise human resources system with the following features:
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/626ea554-98f6-4b53-977f-a5a965a68a6e) and start prompting.
+- User authentication and management
+- Employee profile management with sensitive personal data
+- Document upload and management
+- Leave request system
+- Organization hierarchy visualization
+- Role-based access control (employee, manager, HR)
+- New employee onboarding wizard
+- PDF generation of employee data
 
-Changes made via Lovable will be committed automatically to this repo.
+## Security Vulnerabilities
 
-**Use your preferred IDE**
+This application has been deliberately designed with the following vulnerabilities:
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### 1. SQL Injection (SQLi)
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+The login functionality is vulnerable to SQL injection:
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```javascript
+// Example vulnerable code
+console.log(`SELECT * FROM users WHERE username='${username}' AND password='${password}'`);
 ```
 
-**Edit a file directly in GitHub**
+**Exploitation Example:**
+- Enter `' OR '1'='1` as the username and anything as the password
+- This would result in the SQL query: `SELECT * FROM users WHERE username='' OR '1'='1' AND password='anything'`
+- Since `'1'='1'` is always true, this would bypass authentication
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### 2. Server-Side Request Forgery (SSRF)
 
-**Use GitHub Codespaces**
+The file upload system is vulnerable to SSRF:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```javascript
+// Example vulnerable endpoint
+console.log(`/api/upload?url=s3://employee-bucket/${currentUser?.id}/${file.name}`);
+```
 
-## What technologies are used for this project?
+**Exploitation Example:**
+- Intercept the upload request with a proxy tool like Burp Suite
+- Modify the URL parameter to point to internal resources: `/api/upload?url=http://169.254.169.254/latest/meta-data/`
+- This could potentially allow access to AWS metadata service or other internal systems
 
-This project is built with .
+### 3. Insecure File Upload
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+The application allows unrestricted file uploads:
 
-## How can I deploy this project?
+```javascript
+// No validation on file uploads
+const handleFileUpload = (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    // No validation for file type, size, or content
+    console.log(`Uploading file: ${file.name} without any validation`);
+  }
+};
+```
 
-Simply open [Lovable](https://lovable.dev/projects/626ea554-98f6-4b53-977f-a5a965a68a6e) and click on Share -> Publish.
+**Exploitation Examples:**
+- Upload malicious PHP files that could be executed by the server
+- Upload extremely large files to cause denial of service
+- Upload files with embedded malicious scripts
 
-## I want to use a custom domain - is that possible?
+### 4. Sensitive Data Exposure
 
-We don't support custom domains (yet). If you want to deploy your project under your own domain then we recommend using Netlify. Visit our docs for more details: [Custom domains](https://docs.lovable.dev/tips-tricks/custom-domain/)
+The application displays and processes sensitive information without proper protection:
+
+- Social Security Numbers
+- Bank account details
+- Salary information
+- Personal identifying information
+
+### 5. Insecure Infrastructure Configuration
+
+The application is designed to be deployed with:
+- Hardcoded credentials in YAML files for RDS access
+- Insecure S3 bucket configurations
+- Unprotected EC2 instances
+- Exposed secrets in GitHub Actions configuration
+
+## Deployment Architecture (Security Training)
+
+For training purposes, the application is designed to be deployed as:
+
+1. A microservices application using API Gateway
+2. Single EC2 instance (not ECS)
+3. RDS database with credentials in YAML file
+4. S3 bucket for static file storage
+5. Deployment using GitHub Actions with Terraform
+
+## How to Use for Training
+
+This application can be used to:
+1. Practice identifying security vulnerabilities through code review
+2. Demonstrate exploitation of common web application vulnerabilities
+3. Train security teams on proper remediation techniques
+4. Practice secure DevOps and infrastructure as code
+
+## Recommended Security Controls (for discussion)
+
+After exploring the vulnerabilities, discuss how to implement proper security controls:
+
+- Parameterized queries for database access
+- Input validation and sanitization
+- Proper authentication and authorization
+- Secure file upload handling
+- Encryption of sensitive data
+- Secure infrastructure configuration
+- Secret management
+- Network security controls
+
+## License
+
+This project is intended for educational purposes only.
