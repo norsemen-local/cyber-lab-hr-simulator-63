@@ -3,7 +3,30 @@
 
 This project is a deliberately vulnerable HR application designed for cybersecurity training and education. It demonstrates common security vulnerabilities found in web applications.
 
+## IMPORTANT DISCLAIMER
+
 ⚠️ **WARNING: This application is intentionally vulnerable and should NEVER be deployed in a production environment or with real data.** ⚠️
+
+This application is provided for educational purposes only. By using this software, you acknowledge that:
+
+1. You will use it only in controlled, isolated environments
+2. You will not deploy it with real personal or sensitive data
+3. You will not expose it to public networks
+4. You understand the security risks it demonstrates
+5. You accept full responsibility for its use
+
+**Usage of this application for any malicious purposes, unauthorized testing, or attacks against systems without explicit permission is illegal and unethical.**
+
+## Application Purpose
+
+This HR application serves as a hands-on training tool for:
+
+- Cybersecurity professionals learning to identify vulnerabilities
+- Developers learning secure coding practices
+- Security teams practicing penetration testing techniques
+- Educational institutions teaching application security
+
+By deliberately implementing common vulnerabilities, this application provides a safe environment to practice identifying, exploiting, and remediating security issues without impacting real systems.
 
 ## Application Overview
 
@@ -31,11 +54,24 @@ The login functionality is vulnerable to SQL injection:
 console.log(`SELECT * FROM users WHERE username='${username}' AND password='${password}'`);
 ```
 
-**Exploitation Example:**
-- Enter `' OR '1'='1` as the username and anything as the password
-- This would result in the SQL query: `SELECT * FROM users WHERE username='' OR '1'='1' AND password='anything'`
-- Since `'1'='1'` is always true, this would bypass authentication
-- Alternatively, you can use: `admin'--` as the username, which comments out the password check entirely
+#### Exploitation Step-by-Step:
+
+1. Navigate to the login page
+2. In the username field, enter one of the following:
+   - `' OR '1'='1` (with anything as password)
+   - `admin'--` (with anything as password)
+   - `john' OR 1=1--` (with anything as password)
+
+3. Click the "Log In" button
+
+**What happens:**
+- The first payload creates a query: `SELECT * FROM users WHERE username='' OR '1'='1' AND password='anything'`
+- Since `'1'='1'` is always true, this returns all users and logs in as the first user
+- The second payload creates a query: `SELECT * FROM users WHERE username='admin'-- AND password='anything'`
+- The `--` comments out the password check entirely, logging you in as admin
+- The third example similarly bypasses authentication with a variation of the technique
+
+**Mitigation (for learning):** Use parameterized queries or prepared statements instead of string concatenation.
 
 ### 2. Server-Side Request Forgery (SSRF)
 
@@ -46,10 +82,17 @@ The file upload system is vulnerable to SSRF:
 console.log(`/api/upload?url=s3://employee-bucket/${currentUser?.id}/${file.name}`);
 ```
 
-**Exploitation Example:**
-- Intercept the upload request with a proxy tool like Burp Suite
-- Modify the URL parameter to point to internal resources: `/api/upload?url=http://169.254.169.254/latest/meta-data/`
-- This could potentially allow access to AWS metadata service or other internal systems
+#### Exploitation Step-by-Step:
+
+1. Log in to the application
+2. Navigate to the document upload page
+3. Select a file to upload
+4. Intercept the request with a proxy tool like Burp Suite
+5. Modify the URL parameter to point to internal resources:
+   ```
+   /api/upload?url=http://169.254.169.254/latest/meta-data/
+   ```
+6. Observe the response which reveals EC2 metadata
 
 #### Exploiting SSRF to Connect to Other EC2 Instances
 
