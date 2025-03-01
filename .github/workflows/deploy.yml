@@ -1,0 +1,77 @@
+
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build application
+        run: npm run build
+        
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init
+        
+      - name: Terraform Plan
+        run: |
+          cd terraform
+          terraform plan -var="db_username=${{ secrets.DB_USERNAME }}" -var="db_password=${{ secrets.DB_PASSWORD }}"
+        
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cd terraform
+          terraform apply -auto-approve -var="db_username=${{ secrets.DB_USERNAME }}" -var="db_password=${{ secrets.DB_PASSWORD }}"
+          
+      - name: Deploy application to EC2
+        run: |
+          # Get the public IP of the EC2 instance from Terraform output
+          cd terraform
+          EC2_IP=$(terraform output -raw ec2_public_ip)
+          
+          # Package the application
+          cd ..
+          tar -czf app.tar.gz dist
+          
+          # Copy files to EC2
+          scp -o StrictHostKeyChecking=no -i ${{ secrets.SSH_PRIVATE_KEY }} app.tar.gz ec2-user@$EC2_IP:/home/ec2-user/
+          
+          # SSH into the instance and deploy
+          ssh -o StrictHostKeyChecking=no -i ${{ secrets.SSH_PRIVATE_KEY }} ec2-user@$EC2_IP << 'EOF'
+            mkdir -p /var/www/html
+            tar -xzf app.tar.gz -C /var/www/html
+            # Create database configuration with credentials (deliberately insecure for demo)
+            echo "db_config:" > /home/ec2-user/db_config.yaml
+            echo "  username: ${{ secrets.DB_USERNAME }}" >> /home/ec2-user/db_config.yaml
+            echo "  password: ${{ secrets.DB_PASSWORD }}" >> /home/ec2-user/db_config.yaml
+            echo "  host: $(aws rds describe-db-instances --db-instance-identifier hr-portal-db --query 'DBInstances[0].Endpoint.Address' --output text)" >> /home/ec2-user/db_config.yaml
+            # Setup and start the application (simplified)
+            sudo systemctl restart nginx
+          EOF
