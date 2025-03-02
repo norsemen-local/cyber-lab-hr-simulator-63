@@ -41,55 +41,85 @@ jobs:
           cd terraform
           terraform init
       
-      - name: Check if environment is already deployed
-        id: check_deployment
+      - name: Check for existing resources
+        id: check_resources
         run: |
+          # Check for existing resources by name to avoid duplicates
+          echo "Checking for existing resources..."
+          
+          # Check for EC2 instance
+          EC2_EXISTS=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" "Name=instance-state-name,Values=running,stopped,pending,stopping" --query "Reservations[*].Instances[*]" --output text | wc -l)
+          
+          # Check for RDS instance
+          RDS_EXISTS=$(aws rds describe-db-instances --query "DBInstances[?DBInstanceIdentifier=='hr-portal-db'].DBInstanceIdentifier" --output text | wc -l)
+          
+          # Check for VPC
+          VPC_EXISTS=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=hr-portal-vpc" --query "Vpcs[*].VpcId" --output text | wc -l)
+          
+          # Check for API Gateway
+          API_EXISTS=$(aws apigateway get-rest-apis --query "items[?name=='hr-portal-api'].id" --output text | wc -l)
+          
+          # Output the results
+          echo "EC2 instances found: $EC2_EXISTS"
+          echo "RDS instances found: $RDS_EXISTS"
+          echo "VPCs found: $VPC_EXISTS"
+          echo "API Gateways found: $API_EXISTS"
+          
+          # If any resources exist, set the flag
+          if [ "$EC2_EXISTS" -gt 0 ] || [ "$RDS_EXISTS" -gt 0 ] || [ "$VPC_EXISTS" -gt 0 ] || [ "$API_EXISTS" -gt 0 ]; then
+            echo "existing_resources=true" >> $GITHUB_OUTPUT
+            echo "Some resources already exist. To avoid duplicates, the deployment will be cancelled."
+          else
+            echo "existing_resources=false" >> $GITHUB_OUTPUT
+            echo "No existing resources found. Proceeding with deployment."
+          fi
+          
+          # Also check Terraform state as a backup check
           cd terraform
-          # Use terraform state list to check if resources exist instead of output
           if terraform state list | grep -q "aws_instance.hr_portal_ec2"; then
-            echo "Environment is already deployed"
-            echo "already_deployed=true" >> $GITHUB_OUTPUT
+            echo "terraform_deployed=true" >> $GITHUB_OUTPUT
             # Get outputs safely with error handling
             EC2_IP=$(terraform output -raw ec2_public_ip 2>/dev/null || echo "unavailable")
             API_URL=$(terraform output -raw api_gateway_url 2>/dev/null || echo "unavailable")
             echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
             echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
           else
-            echo "Environment is not yet deployed"
-            echo "already_deployed=false" >> $GITHUB_OUTPUT
+            echo "terraform_deployed=false" >> $GITHUB_OUTPUT
           fi
       
-      - name: Cancel deployment if already exists
-        if: ${{ steps.check_deployment.outputs.already_deployed == 'true' }}
+      - name: Cancel deployment if resources exist
+        if: ${{ steps.check_resources.outputs.existing_resources == 'true' || steps.check_resources.outputs.terraform_deployed == 'true' }}
         run: |
-          echo "Infrastructure is already deployed."
-          echo "EC2 Instance URL: http://${{ steps.check_deployment.outputs.EC2_IP || 'unavailable' }}"
-          echo "API Gateway URL: ${{ steps.check_deployment.outputs.API_URL || 'unavailable' }}"
+          echo "Infrastructure is already deployed or resources with the same names already exist."
+          if [[ "${{ steps.check_resources.outputs.terraform_deployed }}" == "true" ]]; then
+            echo "EC2 Instance URL: http://${{ steps.check_resources.outputs.EC2_IP || 'unavailable' }}"
+            echo "API Gateway URL: ${{ steps.check_resources.outputs.API_URL || 'unavailable' }}"
+          fi
           echo "To destroy the infrastructure, run the destroy workflow."
           exit 0
           
       - name: Install dependencies
-        if: ${{ steps.check_deployment.outputs.already_deployed != 'true' }}
+        if: ${{ steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
         run: npm ci
         
       - name: Build application
-        if: ${{ steps.check_deployment.outputs.already_deployed != 'true' }}
+        if: ${{ steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
         run: npm run build
         
       - name: Terraform Plan
-        if: ${{ steps.check_deployment.outputs.already_deployed != 'true' }}
+        if: ${{ steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
         run: |
           cd terraform
           terraform plan -var="db_username=admin" -var="db_password=password123"
         
       - name: Terraform Apply
-        if: ${{ github.ref == 'refs/heads/main' && steps.check_deployment.outputs.already_deployed != 'true' }}
+        if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
         run: |
           cd terraform
           terraform apply -auto-approve -var="db_username=admin" -var="db_password=password123"
           
       - name: Deploy application to EC2
-        if: ${{ github.ref == 'refs/heads/main' && steps.check_deployment.outputs.already_deployed != 'true' }}
+        if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
         run: |
           # Get the public IP of the EC2 instance from Terraform output
           cd terraform
@@ -121,8 +151,8 @@ jobs:
           echo "API Gateway URL: $API_URL"
       
       - name: Display URLs for existing deployment
-        if: ${{ steps.check_deployment.outputs.already_deployed == 'true' }}
+        if: ${{ steps.check_resources.outputs.terraform_deployed == 'true' }}
         run: |
           echo "Application is already deployed!"
-          echo "EC2 Instance URL: http://${{ steps.check_deployment.outputs.EC2_IP || 'unavailable' }}"
-          echo "API Gateway URL: ${{ steps.check_deployment.outputs.API_URL || 'unavailable' }}"
+          echo "EC2 Instance URL: http://${{ steps.check_resources.outputs.EC2_IP || 'unavailable' }}"
+          echo "API Gateway URL: ${{ steps.check_resources.outputs.API_URL || 'unavailable' }}"
