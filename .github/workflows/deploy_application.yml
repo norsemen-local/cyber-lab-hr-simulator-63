@@ -48,9 +48,27 @@ jobs:
           echo "Creating temporary S3 bucket: $BUCKET_NAME"
           aws s3 mb s3://$BUCKET_NAME
           
+          # Set bucket policy to allow public access for the EC2 instance
+          echo "Setting bucket policy to allow EC2 access..."
+          aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy '{
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": ["s3:GetObject", "s3:ListBucket"],
+                "Resource": ["arn:aws:s3:::'$BUCKET_NAME'", "arn:aws:s3:::'$BUCKET_NAME'/*"]
+              }
+            ]
+          }'
+          
           # Upload Docker image to S3
           echo "Uploading Docker image to S3..."
           aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
+          
+          # Make the Docker image publicly accessible
+          echo "Making Docker image publicly accessible..."
+          aws s3api put-object-acl --bucket $BUCKET_NAME --key hr-portal-app.tar --acl public-read
       
       - name: Verify Docker Installation on EC2
         if: ${{ inputs.instance_id != 'unavailable' }}
@@ -92,7 +110,7 @@ jobs:
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
           
-          echo "Ensuring /tmp/hrApp directory exists..."
+          echo "Ensuring /tmp/hrApp directory exists with proper permissions..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
@@ -100,11 +118,17 @@ jobs:
               'mkdir -p /tmp/hrApp',
               'echo \"Created/verified hrApp directory at $(date)\" > /tmp/hrApp/directory-check.txt',
               'ls -la /tmp/hrApp',
-              'chmod 777 /tmp/hrApp'
+              'chmod -R 777 /tmp/hrApp',
+              'echo \"Directory permissions after chmod:\"',
+              'ls -la /tmp/hrApp',
+              'echo \"Current user and groups:\"',
+              'id',
+              'echo \"AWS CLI version:\"',
+              'aws --version || yum install -y aws-cli'
             ]" \
-            --comment "Ensure hrApp directory exists"
+            --comment "Ensure hrApp directory exists with proper permissions"
           
-          sleep 10
+          sleep 15
       
       - name: Deploy application
         if: ${{ inputs.instance_id != 'unavailable' }}
@@ -118,14 +142,27 @@ jobs:
             exit 0
           fi
           
+          # Get the bucket's public URL
+          S3_URL="https://$BUCKET_NAME.s3.amazonaws.com/hr-portal-app.tar"
+          
           echo "Deploying Docker container to EC2..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
             --parameters "commands=[
               'echo \"====== STARTING DEPLOYMENT $(date) ======\" > /tmp/deployment.log',
-              'echo \"Downloading Docker image from S3...\" >> /tmp/deployment.log',
-              'aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
+              'echo \"Bucket name: $BUCKET_NAME\" >> /tmp/deployment.log',
+              'echo \"S3 URL: $S3_URL\" >> /tmp/deployment.log',
+              'echo \"AWS CLI version:\" >> /tmp/deployment.log',
+              'aws --version >> /tmp/deployment.log 2>&1 || (yum install -y aws-cli && aws --version >> /tmp/deployment.log 2>&1)',
+              'echo \"AWS region configuration:\" >> /tmp/deployment.log',
+              'aws configure get region >> /tmp/deployment.log 2>&1 || echo \"us-east-1\" | aws configure set region - >> /tmp/deployment.log 2>&1',
+              'echo \"List buckets to verify AWS credentials:\" >> /tmp/deployment.log',
+              'aws s3 ls >> /tmp/deployment.log 2>&1 || echo \"Failed to list buckets\" >> /tmp/deployment.log',
+              'echo \"Downloading Docker image directly using curl...\" >> /tmp/deployment.log',
+              'curl -L -o /tmp/hrApp/hr-portal-app.tar \"$S3_URL\" >> /tmp/deployment.log 2>&1',
+              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then echo \"Direct download failed, trying alternative method...\" >> /tmp/deployment.log; fi',
+              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/hrApp/ --no-sign-request >> /tmp/deployment.log 2>&1; fi',
               'echo \"File downloaded to /tmp/hrApp/ directory\" >> /tmp/deployment.log',
               'ls -la /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
               'echo \"Loading Docker image...\" >> /tmp/deployment.log',
@@ -167,7 +204,11 @@ jobs:
               'echo \"Web server response:\"',
               'curl -s -o /dev/null -w \"%{http_code}\" http://localhost || echo \"Failed to connect\"',
               'echo \"Files in /tmp/hrApp:\"',
-              'ls -la /tmp/hrApp/'
+              'ls -la /tmp/hrApp/',
+              'echo \"Docker images:\"',
+              'sudo docker images',
+              'echo \"System disk space:\"',
+              'df -h'
             ]" \
             --comment "Verify HR Portal container deployment"
             
@@ -179,6 +220,10 @@ jobs:
           if [ -n "$BUCKET_NAME" ]; then
             echo "Keeping S3 bucket: $BUCKET_NAME intact for future use"
             echo "Bucket URL: s3://$BUCKET_NAME"
+            echo "Public URL: https://$BUCKET_NAME.s3.amazonaws.com/hr-portal-app.tar"
+            
+            # Make sure the object is publicly accessible
+            aws s3api put-object-acl --bucket $BUCKET_NAME --key hr-portal-app.tar --acl public-read
             
             # List the contents of the bucket
             echo "Contents of the bucket:"
