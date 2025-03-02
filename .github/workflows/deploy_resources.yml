@@ -30,7 +30,7 @@ on:
 jobs:
   deploy_infrastructure:
     if: ${{ inputs.action != 'destroy' }}
-    uses: ./.github/workflows/deploy_infrastructure.yml@main
+    uses: ./.github/workflows/deploy_infrastructure.yml
     with:
       action: ${{ inputs.action }}
     secrets: inherit
@@ -38,7 +38,7 @@ jobs:
   wait_for_instance:
     needs: deploy_infrastructure
     if: ${{ inputs.action != 'destroy' && needs.deploy_infrastructure.outputs.instance_id != 'unavailable' }}
-    uses: ./.github/workflows/wait_for_instance.yml@main
+    uses: ./.github/workflows/wait_for_instance.yml
     with:
       instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
     secrets: inherit
@@ -46,7 +46,7 @@ jobs:
   deploy_application:
     needs: [deploy_infrastructure, wait_for_instance]
     if: ${{ inputs.action != 'destroy' && needs.deploy_infrastructure.outputs.instance_id != 'unavailable' }}
-    uses: ./.github/workflows/deploy_application.yml@main
+    uses: ./.github/workflows/deploy_application.yml
     with:
       instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
       ec2_ip: ${{ needs.deploy_infrastructure.outputs.ec2_ip }}
