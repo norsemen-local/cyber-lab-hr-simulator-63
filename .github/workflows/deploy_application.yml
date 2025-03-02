@@ -40,8 +40,11 @@ jobs:
           docker build -t hr-portal-app:latest .
           docker save hr-portal-app:latest > hr-portal-app.tar
           
-          # Create temporary S3 bucket with unique name 
+          # Create unique bucket name and store it as an environment variable for later steps
           BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
+          echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV
+          
+          # Create temporary S3 bucket with unique name 
           echo "Creating temporary S3 bucket: $BUCKET_NAME"
           aws s3 mb s3://$BUCKET_NAME
           
@@ -54,7 +57,7 @@ jobs:
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
           EC2_IP=${{ inputs.ec2_ip }}
-          BUCKET_NAME="hr-portal-docker-temp-$(date +%s -d '1 minute ago')"
+          BUCKET_NAME=${{ env.BUCKET_NAME }}
           
           if [ "$INSTANCE_ID" == "unavailable" ]; then
             echo "Instance ID not available. Skipping deployment."
@@ -78,7 +81,24 @@ jobs:
             ]" \
             --comment "Deploy HR Portal Docker container"
             
-          # Clean up S3 bucket
-          echo "Cleaning up S3 bucket..."
-          aws s3 rm s3://$BUCKET_NAME/hr-portal-app.tar
-          aws s3 rb s3://$BUCKET_NAME
+      - name: Clean up S3 bucket
+        if: ${{ always() && inputs.instance_id != 'unavailable' }}
+        run: |
+          BUCKET_NAME=${{ env.BUCKET_NAME }}
+          
+          if [ -n "$BUCKET_NAME" ]; then
+            echo "Cleaning up S3 bucket: $BUCKET_NAME"
+            
+            # Check if bucket exists before attempting to delete objects
+            if aws s3 ls "s3://$BUCKET_NAME" >/dev/null 2>&1; then
+              echo "Removing objects from bucket..."
+              aws s3 rm "s3://$BUCKET_NAME/hr-portal-app.tar" --quiet || echo "Object already removed or doesn't exist"
+              
+              echo "Deleting bucket..."
+              aws s3 rb "s3://$BUCKET_NAME" --force || echo "Bucket deletion failed, might be already removed"
+            else
+              echo "Bucket $BUCKET_NAME doesn't exist, skipping cleanup"
+            fi
+          else
+            echo "Bucket name not available, skipping cleanup"
+          fi
