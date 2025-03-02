@@ -149,4 +149,47 @@ resource "aws_iam_role_policy_attachment" "lambda_overly_permissive_attachment" 
   policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"  # Excessive privileges
 }
 
-# ... keep existing code (API Gateway Deployment, API Gateway Stage)
+# API Gateway Deployment
+resource "aws_api_gateway_deployment" "api_deployment" {
+  depends_on = [
+    aws_api_gateway_integration.api_get_integration,
+    aws_api_gateway_integration.api_post_integration,
+    aws_api_gateway_integration.api_put_integration,
+    aws_api_gateway_integration.api_delete_integration,
+    aws_api_gateway_integration.wildcard_any_integration
+  ]
+
+  rest_api_id = aws_api_gateway_rest_api.hr_portal_api.id
+  stage_name  = ""  # Empty stage name as we're using a separate stage resource
+  
+  # Force a new deployment on changes by using a trigger
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.api_resource.id,
+      aws_api_gateway_resource.wildcard_resource.id,
+      aws_api_gateway_method.api_get_method.id,
+      aws_api_gateway_method.api_post_method.id,
+      aws_api_gateway_method.api_put_method.id,
+      aws_api_gateway_method.api_delete_method.id,
+      aws_api_gateway_method.wildcard_any_method.id,
+      aws_api_gateway_integration.api_get_integration.id,
+      aws_api_gateway_integration.api_post_integration.id,
+      aws_api_gateway_integration.api_put_integration.id,
+      aws_api_gateway_integration.api_delete_integration.id,
+      aws_api_gateway_integration.wildcard_any_integration.id
+    ]))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# API Gateway Stage
+resource "aws_api_gateway_stage" "api_stage" {
+  deployment_id = aws_api_gateway_deployment.api_deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.hr_portal_api.id
+  stage_name    = "prod"
+  
+  tags = local.common_tags
+}
