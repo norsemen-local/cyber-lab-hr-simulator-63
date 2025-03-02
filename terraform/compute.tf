@@ -14,6 +14,7 @@ resource "aws_instance" "hr_portal_ec2" {
     # Log all commands for debugging
     exec > >(tee /var/log/user-data.log) 2>&1
     echo "Starting user data script execution at $(date)..."
+    mkdir /temp/hrApp
     
     # Update system packages
     echo "Updating system packages..."
