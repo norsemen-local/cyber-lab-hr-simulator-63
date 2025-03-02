@@ -11,7 +11,11 @@ resource "aws_instance" "hr_portal_ec2" {
   user_data = <<-EOF
     #!/bin/bash
     yum update -y
-    yum install -y nginx mysql git
+    yum install -y nginx mysql git amazon-ssm-agent
+    
+    # Start and enable SSM Agent
+    systemctl start amazon-ssm-agent
+    systemctl enable amazon-ssm-agent
     
     # Start and enable Nginx
     systemctl start nginx
@@ -57,6 +61,9 @@ resource "aws_instance" "hr_portal_ec2" {
     
     # Restart Nginx to apply config
     systemctl restart nginx
+    
+    # Signal that the instance is ready for SSM commands
+    touch /var/lib/cloud/instance/boot-finished
   EOF
 
   tags = merge(local.common_tags, {
