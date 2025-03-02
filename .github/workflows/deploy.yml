@@ -1,6 +1,4 @@
-
 name: Deploy to AWS
-
 on:
   push:
     branches: [ main ]
@@ -76,10 +74,7 @@ jobs:
           EC2_IP=$(terraform output -raw ec2_public_ip 2>/dev/null || echo "unavailable")
           API_URL=$(terraform output -raw api_gateway_url 2>/dev/null || echo "unavailable")
           ALB_DNS=$(terraform output -raw alb_dns_name 2>/dev/null || echo "unavailable")
-          
-          # Get instance ID using a reliable method
           INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --query "Reservations[0].Instances[0].InstanceId" --output text 2>/dev/null || echo "unavailable")
-          
           echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
           echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
           echo "ALB_DNS=$ALB_DNS" >> $GITHUB_OUTPUT
@@ -115,4 +110,3 @@ jobs:
             echo "EC2 Instance URL: http://${{ needs.deploy.outputs.ec2_ip || 'unavailable' }}"
             echo "ALB URL: http://${{ needs.deploy.outputs.alb_dns || 'unavailable' }}"
             echo "API Gateway URL: ${{ needs.deploy.outputs.api_url || 'unavailable' }}"
-          fi
