@@ -13,7 +13,6 @@ on:
         type: choice
         options:
           - deploy
-          - destroy
 
 jobs:
   deploy:
@@ -61,42 +60,36 @@ jobs:
           fi
       
       - name: Cancel deployment if already exists
-        if: ${{ steps.check_deployment.outputs.already_deployed == 'true' && github.event.inputs.action != 'destroy' }}
+        if: ${{ steps.check_deployment.outputs.already_deployed == 'true' }}
         run: |
           echo "Infrastructure is already deployed."
           echo "EC2 Instance URL: http://${{ steps.check_deployment.outputs.EC2_IP || 'unavailable' }}"
           echo "API Gateway URL: ${{ steps.check_deployment.outputs.API_URL || 'unavailable' }}"
-          echo "To destroy the infrastructure, run this workflow with the 'destroy' action."
+          echo "To destroy the infrastructure, run the destroy workflow."
           exit 0
           
       - name: Install dependencies
-        if: ${{ github.event.inputs.action != 'destroy' && steps.check_deployment.outputs.already_deployed != 'true' }}
+        if: ${{ steps.check_deployment.outputs.already_deployed != 'true' }}
         run: npm ci
         
       - name: Build application
-        if: ${{ github.event.inputs.action != 'destroy' && steps.check_deployment.outputs.already_deployed != 'true' }}
+        if: ${{ steps.check_deployment.outputs.already_deployed != 'true' }}
         run: npm run build
         
       - name: Terraform Plan
-        if: ${{ github.event.inputs.action != 'destroy' && steps.check_deployment.outputs.already_deployed != 'true' }}
+        if: ${{ steps.check_deployment.outputs.already_deployed != 'true' }}
         run: |
           cd terraform
           terraform plan -var="db_username=admin" -var="db_password=password123"
         
       - name: Terraform Apply
-        if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.action != 'destroy' && steps.check_deployment.outputs.already_deployed != 'true' }}
+        if: ${{ github.ref == 'refs/heads/main' && steps.check_deployment.outputs.already_deployed != 'true' }}
         run: |
           cd terraform
           terraform apply -auto-approve -var="db_username=admin" -var="db_password=password123"
-      
-      - name: Terraform Destroy
-        if: ${{ github.event.inputs.action == 'destroy' }}
-        run: |
-          cd terraform
-          terraform destroy -auto-approve -var="db_username=admin" -var="db_password=password123"
           
       - name: Deploy application to EC2
-        if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.action != 'destroy' && steps.check_deployment.outputs.already_deployed != 'true' }}
+        if: ${{ github.ref == 'refs/heads/main' && steps.check_deployment.outputs.already_deployed != 'true' }}
         run: |
           # Get the public IP of the EC2 instance from Terraform output
           cd terraform
@@ -128,7 +121,7 @@ jobs:
           echo "API Gateway URL: $API_URL"
       
       - name: Display URLs for existing deployment
-        if: ${{ steps.check_deployment.outputs.already_deployed == 'true' && github.event.inputs.action != 'destroy' }}
+        if: ${{ steps.check_deployment.outputs.already_deployed == 'true' }}
         run: |
           echo "Application is already deployed!"
           echo "EC2 Instance URL: http://${{ steps.check_deployment.outputs.EC2_IP || 'unavailable' }}"
