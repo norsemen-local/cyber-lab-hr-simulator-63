@@ -1,6 +1,4 @@
-
 name: Check AWS Resources
-
 on:
   workflow_call:
     outputs:
@@ -62,16 +60,11 @@ jobs:
       - name: Check AWS resources
         id: check_aws
         run: |
-          # Check if EC2 instance exists
           EC2_EXISTS=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region us-east-1 | jq '.Reservations | length')
           if [ "$EC2_EXISTS" -gt 0 ]; then
             echo "existing_resources=true" >> $GITHUB_OUTPUT
-            
-            # Get EC2 IP
             EC2_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region us-east-1 | jq -r '.Reservations[0].Instances[0].PublicIpAddress // "unavailable"')
             echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
-            
-            # Get API Gateway URL
             API_ID=$(aws apigateway get-rest-apis --region us-east-1 | jq -r '.items[] | select(.name=="hr-portal-api") | .id // ""')
             if [ -n "$API_ID" ]; then
               API_URL="https://$API_ID.execute-api.us-east-1.amazonaws.com/prod"
@@ -79,8 +72,6 @@ jobs:
             else
               echo "API_URL=unavailable" >> $GITHUB_OUTPUT
             fi
-            
-            # Get ALB DNS name
             ALB_NAME=$(aws elbv2 describe-load-balancers --region us-east-1 | jq -r '.LoadBalancers[] | select(.LoadBalancerName=="hr-portal-alb") | .DNSName // ""')
             if [ -n "$ALB_NAME" ]; then
               echo "ALB_DNS=$ALB_NAME" >> $GITHUB_OUTPUT
@@ -92,4 +83,3 @@ jobs:
             echo "EC2_IP=unavailable" >> $GITHUB_OUTPUT
             echo "API_URL=unavailable" >> $GITHUB_OUTPUT
             echo "ALB_DNS=unavailable" >> $GITHUB_OUTPUT
-          fi
