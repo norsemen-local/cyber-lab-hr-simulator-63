@@ -25,7 +25,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
       
-      - name: Wait for instance
+      - name: Wait for instance to be ready
         if: ${{ inputs.instance_id != 'unavailable' }}
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
@@ -38,7 +38,7 @@ jobs:
           echo "Waiting for instance $INSTANCE_ID to be fully initialized..."
           
           # Set a reasonable timeout
-          timeout=900  # 15 minutes (increased from 10)
+          timeout=900  # 15 minutes
           interval=15  # 15 seconds
           elapsed=0
           
@@ -69,133 +69,3 @@ jobs:
           # Wait additional time for services to start
           echo "Waiting an additional 3 minutes for all services to start..."
           sleep 180
-      
-      - name: Check and fix SSM Agent
-        if: ${{ inputs.instance_id != 'unavailable' }}
-        run: |
-          INSTANCE_ID=${{ inputs.instance_id }}
-          
-          echo "Checking SSM Agent status for instance $INSTANCE_ID..."
-          
-          # Check if instance is SSM managed
-          SSM_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[0].PingStatus" --output text 2>&1 || echo "NotFound")
-          echo "Current SSM status: $SSM_STATUS"
-          
-          if [ "$SSM_STATUS" == "NotFound" ] || [ "$SSM_STATUS" == "ConnectionLost" ]; then
-            echo "SSM Agent is not online. Attempting to restart via user data script..."
-            
-            # Generate a recovery script that will be executed on next boot
-            cat > /tmp/ssm-recovery.sh <<'EOF'
-#!/bin/bash
-# SSM Agent recovery script
-echo "Running SSM Agent recovery at $(date)" > /var/log/ssm-recovery.log
-# Stop services that might interfere
-systemctl stop amazon-ssm-agent
-# Remove existing SSM Agent state
-rm -rf /var/lib/amazon/ssm/ipc/
-# Make sure the SSM Agent is installed
-yum install -y amazon-ssm-agent
-# Configure SSM Agent with the right region
-echo '{
-  "Profile": "ssm",
-  "Region": "us-east-1"
-}' > /etc/amazon/ssm/amazon-ssm-agent.json
-# Restart SSM Agent
-systemctl enable amazon-ssm-agent
-systemctl restart amazon-ssm-agent
-systemctl status amazon-ssm-agent >> /var/log/ssm-recovery.log
-# Configure AWS CLI default region in case needed
-mkdir -p /root/.aws
-echo '[default]
-region = us-east-1' > /root/.aws/config
-# Mark completion
-echo "Recovery completed at $(date)" >> /var/log/ssm-recovery.log
-EOF
-            
-            # Send recovery script via user data
-            aws ec2 modify-instance-attribute \
-              --instance-id $INSTANCE_ID \
-              --attribute userData \
-              --value "$(base64 -w 0 /tmp/ssm-recovery.sh)"
-            
-            # Reboot the instance to apply new user data
-            echo "Rebooting instance to activate SSM recovery script..."
-            aws ec2 reboot-instances --instance-ids $INSTANCE_ID
-            
-            # Wait for instance to come back online
-            echo "Waiting for instance to reboot and come back online..."
-            sleep 90
-            
-            # Wait for SSM Agent to initialize
-            echo "Checking if SSM Agent is now online..."
-            timeout=300  # 5 minutes
-            interval=15  # 15 seconds
-            elapsed=0
-            
-            while [ $elapsed -lt $timeout ]; do
-              SSM_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[0].PingStatus" --output text 2>&1 || echo "NotFound")
-              echo "Current SSM status: $SSM_STATUS"
-              
-              if [ "$SSM_STATUS" == "Online" ]; then
-                echo "SSM Agent is now online!"
-                break
-              fi
-              
-              sleep $interval
-              elapsed=$((elapsed + interval))
-              echo "Waited for $elapsed seconds..."
-            done
-            
-            if [ $elapsed -ge $timeout ]; then
-              echo "::warning::Failed to get SSM Agent online after recovery attempts. The deployment might fail."
-            fi
-          else
-            echo "SSM Agent is already online, no recovery needed."
-          fi
-      
-      - name: Test instance connectivity and Docker installation
-        if: ${{ inputs.instance_id != 'unavailable' }}
-        run: |
-          INSTANCE_ID=${{ inputs.instance_id }}
-          
-          if [ "$INSTANCE_ID" == "unavailable" ]; then
-            echo "Instance ID not available. Skipping connectivity test."
-            exit 0
-          fi
-          
-          echo "Testing instance with SSM command..."
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters 'commands=[
-              "echo \"SSM test successful\"",
-              "echo \"Checking Docker installation...\"",
-              "if ! command -v docker &> /dev/null; then",
-              "  echo \"Docker not found, installing...\"",
-              "  sudo amazon-linux-extras install -y docker || sudo yum install -y docker",
-              "  sudo systemctl enable docker",
-              "  sudo systemctl start docker",
-              "fi",
-              "docker --version",
-              "sudo systemctl status docker",
-              "echo \"Docker status: $?\""
-            ]' \
-            --comment "Testing SSM connectivity and Docker installation" || echo "SSM command failed. Continuing workflow."
-            
-          sleep 15
-          
-          # Verify Docker is running with an additional check
-          echo "Verifying Docker is properly installed and running..."
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters 'commands=[
-              "echo \"Running final Docker verification...\"",
-              "docker --version || echo \"Docker is not installed properly\"",
-              "sudo systemctl status docker || echo \"Docker service is not running properly\"",
-              "sudo systemctl restart docker || echo \"Failed to restart Docker\"",
-              "echo \"Docker verification complete\""
-            ]' \
-            --comment "Final Docker verification" || echo "SSM command failed. Continuing workflow."
-            
-          sleep 15

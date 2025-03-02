@@ -43,8 +43,24 @@ jobs:
       instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
     secrets: inherit
   
-  deploy_application:
+  verify_ssm:
     needs: [deploy_infrastructure, wait_for_instance]
+    if: ${{ inputs.action != 'destroy' && needs.deploy_infrastructure.outputs.instance_id != 'unavailable' }}
+    uses: ./.github/workflows/verify_ssm_agent.yml
+    with:
+      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
+    secrets: inherit
+
+  verify_docker:
+    needs: [deploy_infrastructure, wait_for_instance, verify_ssm]
+    if: ${{ inputs.action != 'destroy' && needs.deploy_infrastructure.outputs.instance_id != 'unavailable' }}
+    uses: ./.github/workflows/verify_docker.yml
+    with:
+      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
+    secrets: inherit
+  
+  deploy_application:
+    needs: [deploy_infrastructure, wait_for_instance, verify_ssm, verify_docker]
     if: ${{ inputs.action != 'destroy' && needs.deploy_infrastructure.outputs.instance_id != 'unavailable' }}
     uses: ./.github/workflows/deploy_application.yml
     with:

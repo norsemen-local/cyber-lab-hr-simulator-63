@@ -1,0 +1,73 @@
+
+name: HR Portal - Verify Docker
+on:
+  workflow_call:
+    inputs:
+      instance_id:
+        description: 'EC2 instance ID'
+        type: string
+        required: true
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+jobs:
+  verify_docker:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Test instance connectivity and Docker installation
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping connectivity test."
+            exit 0
+          fi
+          
+          echo "Testing instance with SSM command..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters 'commands=[
+              "echo \"SSM test successful\"",
+              "echo \"Checking Docker installation...\"",
+              "if ! command -v docker &> /dev/null; then",
+              "  echo \"Docker not found, installing...\"",
+              "  sudo amazon-linux-extras install -y docker || sudo yum install -y docker",
+              "  sudo systemctl enable docker",
+              "  sudo systemctl start docker",
+              "fi",
+              "docker --version",
+              "sudo systemctl status docker",
+              "echo \"Docker status: $?\""
+            ]' \
+            --comment "Testing SSM connectivity and Docker installation" || echo "SSM command failed. Continuing workflow."
+            
+          sleep 15
+          
+          # Verify Docker is running with an additional check
+          echo "Verifying Docker is properly installed and running..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters 'commands=[
+              "echo \"Running final Docker verification...\"",
+              "docker --version || echo \"Docker is not installed properly\"",
+              "sudo systemctl status docker || echo \"Docker service is not running properly\"",
+              "sudo systemctl restart docker || echo \"Failed to restart Docker\"",
+              "echo \"Docker verification complete\""
+            ]' \
+            --comment "Final Docker verification" || echo "SSM command failed. Continuing workflow."
+            
+          sleep 15
