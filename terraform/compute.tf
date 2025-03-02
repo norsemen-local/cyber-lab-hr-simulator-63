@@ -10,27 +10,43 @@ resource "aws_instance" "hr_portal_ec2" {
 
   user_data = <<-EOF
     #!/bin/bash
-    set -e
+    # Make sure script runs with proper permissions
+    set -ex
+    
     # Log all commands for debugging
     exec > >(tee /var/log/user-data.log) 2>&1
     echo "Starting user data script execution at $(date)..."
-    mkdir /temp/hrApp
+    
+    # Create a test file to verify script execution
+    echo "Script executed at $(date)" > /tmp/script-executed.txt
+    
+    # Create application directory
+    mkdir -p /tmp/hrApp
+    echo "Created hrApp directory at $(date)" > /tmp/hrApp/created.txt
     
     # Update system packages
     echo "Updating system packages..."
     yum update -y
     
-    # Install Docker - with more robust error handling
+    # Install Docker with robust error handling
     echo "Installing Docker..."
     amazon-linux-extras install -y docker || {
       echo "Failed to install Docker using amazon-linux-extras, trying alternative method..."
       yum install -y docker
     }
     
-    # Make sure Docker service is enabled and started
+    # Make sure Docker service is enabled and started with retries
     echo "Enabling and starting Docker service..."
     systemctl enable docker
-    systemctl start docker
+    
+    # Try to start Docker with multiple attempts
+    for i in {1..5}; do
+      echo "Attempt $i to start Docker service..."
+      systemctl start docker && break || {
+        echo "Start attempt $i failed, waiting and trying again..."
+        sleep 10
+      }
+    done
     
     # Verify Docker is installed and running
     echo "Verifying Docker installation..."
@@ -42,7 +58,7 @@ resource "aws_instance" "hr_portal_ec2" {
     
     # Install and configure SSM Agent
     echo "Installing and configuring SSM Agent..."
-    yum install -y amazon-ssm-agent
+    yum install -y amazon-ssm-agent || echo "SSM agent installation failed, may already be installed"
     systemctl enable amazon-ssm-agent
     systemctl start amazon-ssm-agent
     
@@ -103,7 +119,8 @@ resource "aws_instance" "hr_portal_ec2" {
     echo "Docker status: $(docker --version 2>&1)" > /var/www/html/docker-status.txt
     echo "Service status: $(systemctl status docker 2>&1)" >> /var/www/html/docker-status.txt
     
-    echo "User data script execution completed successfully at $(date)!"
+    # Create a file to indicate script completion
+    echo "User data script execution completed successfully at $(date)!" > /tmp/user-data-complete.txt
   EOF
 
   tags = merge(local.common_tags, {
