@@ -1,6 +1,4 @@
-
 name: Deploy Application
-
 on:
   workflow_call:
     inputs:
@@ -29,18 +27,13 @@ jobs:
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
           EC2_IP=${{ inputs.ec2_ip }}
-          
           if [ "$INSTANCE_ID" == "unavailable" ]; then
             echo "Instance ID not available. Skipping deployment."
             exit 0
           fi
-          
-          # Create temporary S3 bucket for Docker image transfer
           BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
           aws s3 mb s3://$BUCKET_NAME
           aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
-          
-          # Deploy Docker container via SSM
           echo "Deploying Docker container to EC2..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
@@ -57,7 +50,5 @@ jobs:
               'curl -s http://localhost || echo \"Could not connect to web server\"'
             ]" \
             --comment "Deploy HR Portal Docker container"
-          
-          # Clean up S3 bucket
           aws s3 rm s3://$BUCKET_NAME/hr-portal-app.tar
           aws s3 rb s3://$BUCKET_NAME
