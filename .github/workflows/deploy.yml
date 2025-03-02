@@ -46,12 +46,15 @@ jobs:
         id: check_deployment
         run: |
           cd terraform
-          # Try to get the EC2 instance IP - if this works, environment exists
-          if terraform output -raw ec2_public_ip 2>/dev/null; then
+          # Use terraform state list to check if resources exist instead of output
+          if terraform state list | grep -q "aws_instance.hr_portal_ec2"; then
             echo "Environment is already deployed"
             echo "already_deployed=true" >> $GITHUB_OUTPUT
-            echo "EC2_IP=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
-            echo "API_URL=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+            # Get outputs safely with error handling
+            EC2_IP=$(terraform output -raw ec2_public_ip 2>/dev/null || echo "unavailable")
+            API_URL=$(terraform output -raw api_gateway_url 2>/dev/null || echo "unavailable")
+            echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
+            echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
           else
             echo "Environment is not yet deployed"
             echo "already_deployed=false" >> $GITHUB_OUTPUT
@@ -61,8 +64,8 @@ jobs:
         if: ${{ steps.check_deployment.outputs.already_deployed == 'true' && github.event.inputs.action != 'destroy' }}
         run: |
           echo "Infrastructure is already deployed."
-          echo "EC2 Instance URL: http://${{ steps.check_deployment.outputs.EC2_IP }}"
-          echo "API Gateway URL: ${{ steps.check_deployment.outputs.API_URL }}"
+          echo "EC2 Instance URL: http://${{ steps.check_deployment.outputs.EC2_IP || 'unavailable' }}"
+          echo "API Gateway URL: ${{ steps.check_deployment.outputs.API_URL || 'unavailable' }}"
           echo "To destroy the infrastructure, run this workflow with the 'destroy' action."
           exit 0
           
@@ -128,5 +131,5 @@ jobs:
         if: ${{ steps.check_deployment.outputs.already_deployed == 'true' && github.event.inputs.action != 'destroy' }}
         run: |
           echo "Application is already deployed!"
-          echo "EC2 Instance URL: http://${{ steps.check_deployment.outputs.EC2_IP }}"
-          echo "API Gateway URL: ${{ steps.check_deployment.outputs.API_URL }}"
+          echo "EC2 Instance URL: http://${{ steps.check_deployment.outputs.EC2_IP || 'unavailable' }}"
+          echo "API Gateway URL: ${{ steps.check_deployment.outputs.API_URL || 'unavailable' }}"
