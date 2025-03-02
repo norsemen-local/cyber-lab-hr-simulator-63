@@ -131,97 +131,74 @@ jobs:
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
           BUCKET_NAME=${{ env.BUCKET_NAME }}
-          S3_URL=${{ env.S3_URL }}
           
           if [ "$INSTANCE_ID" == "unavailable" ]; then
             echo "Instance ID not available. Skipping deployment."
             exit 0
           fi
           
-          # Deploy using SSM with multiple download methods
+          # Deploy using SSM with simplified download methods
           echo "Deploying Docker container to EC2..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=[
-              'echo \"====== STARTING DEPLOYMENT $(date) ======\" > /tmp/deployment.log',
+            --parameters commands='[
+              "echo \"====== STARTING DEPLOYMENT $(date) ======\" > /tmp/deployment.log",
               
-              'echo \"Bucket name: $BUCKET_NAME\" >> /tmp/deployment.log',
-              'echo \"S3 URL: $S3_URL\" >> /tmp/deployment.log',
+              "echo \"Bucket name: '$BUCKET_NAME'\" >> /tmp/deployment.log",
               
-              'echo \"===== CONFIGURING AWS =====\" >> /tmp/deployment.log',
-              'if ! command -v aws &> /dev/null; then',
-              '  echo \"Installing AWS CLI...\" >> /tmp/deployment.log',
-              '  yum install -y aws-cli >> /tmp/deployment.log 2>&1',
-              'fi',
+              "echo \"===== CONFIGURING AWS =====\" >> /tmp/deployment.log",
+              "if ! command -v aws &> /dev/null; then",
+              "  echo \"Installing AWS CLI...\" >> /tmp/deployment.log",
+              "  yum install -y aws-cli >> /tmp/deployment.log 2>&1",
+              "fi",
               
-              'echo \"Configuring AWS region...\" >> /tmp/deployment.log',
-              'aws configure set region us-east-1 >> /tmp/deployment.log 2>&1',
+              "echo \"Configuring AWS region...\" >> /tmp/deployment.log",
+              "aws configure set region us-east-1 >> /tmp/deployment.log 2>&1",
               
-              'echo \"Verifying AWS credentials...\" >> /tmp/deployment.log',
-              'aws sts get-caller-identity >> /tmp/deployment.log 2>&1 || echo \"Failed to get caller identity\" >> /tmp/deployment.log',
+              "echo \"===== DOWNLOAD ATTEMPTS =====\" >> /tmp/deployment.log",
+              "echo \"Attempt 1: Using instance profile credentials...\" >> /tmp/deployment.log",
+              "aws s3 cp s3://'$BUCKET_NAME'/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1",
               
-              'echo \"===== DOWNLOAD ATTEMPTS =====\" >> /tmp/deployment.log',
-              'echo \"Attempt 1: Using instance profile credentials...\" >> /tmp/deployment.log',
-              'aws s3 cp s3://'$BUCKET_NAME'/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
+              "if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then",
+              "  echo \"Attempt 2: Trying with --no-sign-request\" >> /tmp/deployment.log",
+              "  aws s3 cp s3://'$BUCKET_NAME'/hr-portal-app.tar /tmp/hrApp/ --no-sign-request >> /tmp/deployment.log 2>&1",
+              "fi",
               
-              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then',
-              '  echo \"Attempt 2: Using AWS SDK metadata credentials...\" >> /tmp/deployment.log',
-              '  TOKEN=$(curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\")',
-              '  ROLE=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/)',
-              '  echo \"Found IAM role: $ROLE\" >> /tmp/deployment.log',
-              '  CREDENTIALS=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE)',
-              '  ACCESS_KEY=$(echo $CREDENTIALS | grep -o \"\\\"AccessKeyId\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
-              '  SECRET_KEY=$(echo $CREDENTIALS | grep -o \"\\\"SecretAccessKey\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
-              '  SESSION_TOKEN=$(echo $CREDENTIALS | grep -o \"\\\"Token\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
-              '  aws configure set aws_access_key_id $ACCESS_KEY',
-              '  aws configure set aws_secret_access_key $SECRET_KEY',
-              '  aws configure set aws_session_token $SESSION_TOKEN',
-              '  aws s3 cp s3://'$BUCKET_NAME'/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
-              'fi',
+              "if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then",
+              "  echo \"Attempt 3: Using direct URL download\" >> /tmp/deployment.log",
+              "  BUCKET_URL=\"https://'$BUCKET_NAME'.s3.amazonaws.com/hr-portal-app.tar\"",
+              "  echo \"Using URL: $BUCKET_URL\" >> /tmp/deployment.log",
+              "  curl -s -o /tmp/hrApp/hr-portal-app.tar \"$BUCKET_URL\" >> /tmp/deployment.log 2>&1",
+              "fi",
               
-              'echo \"Checking if download was successful...\" >> /tmp/deployment.log',
-              'ls -la /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
+              "echo \"Checking if download was successful...\" >> /tmp/deployment.log",
+              "ls -la /tmp/hrApp/ >> /tmp/deployment.log 2>&1",
               
-              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then',
-              '  echo \"ERROR: Failed to download Docker image after multiple attempts\" >> /tmp/deployment.log',
-              '  echo \"Attempting direct download via curl...\" >> /tmp/deployment.log',
-              '  TOKEN=$(curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\")',
-              '  ROLE=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/)',
-              '  CREDENTIALS=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE)',
-              '  ACCESS_KEY=$(echo $CREDENTIALS | grep -o \"\\\"AccessKeyId\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
-              '  SECRET_KEY=$(echo $CREDENTIALS | grep -o \"\\\"SecretAccessKey\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
-              '  SESSION_TOKEN=$(echo $CREDENTIALS | grep -o \"\\\"Token\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
-              '  echo \"Using presigned URL as last resort...\" >> /tmp/deployment.log',
-              '  TIMESTAMP=$(date +%s)',
-              '  PRESIGNED_URL=$(AWS_ACCESS_KEY_ID=$ACCESS_KEY AWS_SECRET_ACCESS_KEY=$SECRET_KEY AWS_SESSION_TOKEN=$SESSION_TOKEN aws s3 presign s3://'$BUCKET_NAME'/hr-portal-app.tar --expires-in 3600)',
-              '  echo \"Generated presigned URL\" >> /tmp/deployment.log',
-              '  curl -s -o /tmp/hrApp/hr-portal-app.tar \"$PRESIGNED_URL\" >> /tmp/deployment.log 2>&1',
-              'fi',
+              "if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then",
+              "  echo \"CRITICAL ERROR: All download attempts failed\" >> /tmp/deployment.log",
+              "  cat /tmp/deployment.log",
+              "  exit 1",
+              "fi",
               
-              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then',
-              '  echo \"CRITICAL ERROR: All download attempts failed\" >> /tmp/deployment.log',
-              '  exit 1',
-              'fi',
+              "echo \"===== DOCKER DEPLOYMENT =====\" >> /tmp/deployment.log",
+              "echo \"Loading Docker image...\" >> /tmp/deployment.log",
+              "sudo docker load -i /tmp/hrApp/hr-portal-app.tar >> /tmp/deployment.log 2>&1",
               
-              'echo \"===== DOCKER DEPLOYMENT =====\" >> /tmp/deployment.log',
-              'echo \"Loading Docker image...\" >> /tmp/deployment.log',
-              'sudo docker load -i /tmp/hrApp/hr-portal-app.tar >> /tmp/deployment.log 2>&1',
+              "echo \"Removing existing container if any...\" >> /tmp/deployment.log",
+              "sudo docker stop hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to stop\" >> /tmp/deployment.log",
+              "sudo docker rm hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to remove\" >> /tmp/deployment.log",
               
-              'echo \"Removing existing container if any...\" >> /tmp/deployment.log',
-              'sudo docker stop hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to stop\" >> /tmp/deployment.log',
-              'sudo docker rm hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to remove\" >> /tmp/deployment.log',
+              "echo \"Running new container...\" >> /tmp/deployment.log",
+              "sudo docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest >> /tmp/deployment.log 2>&1",
               
-              'echo \"Running new container...\" >> /tmp/deployment.log',
-              'sudo docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest >> /tmp/deployment.log 2>&1',
+              "echo \"Verifying container is running...\" >> /tmp/deployment.log",
+              "sudo docker ps >> /tmp/deployment.log 2>&1",
+              "sudo docker logs hr-portal-container >> /tmp/deployment.log 2>&1",
               
-              'echo \"Verifying container is running...\" >> /tmp/deployment.log',
-              'sudo docker ps >> /tmp/deployment.log 2>&1',
-              'sudo docker logs hr-portal-container >> /tmp/deployment.log 2>&1',
-              
-              'echo \"====== DEPLOYMENT COMPLETED $(date) ======\" >> /tmp/deployment.log',
-              'cat /tmp/deployment.log'
-            ]" \
+              "echo \"====== DEPLOYMENT COMPLETED $(date) ======\" >> /tmp/deployment.log",
+              "cat /tmp/deployment.log"
+            ]' \
             --comment "Deploy HR Portal Docker container"
         
       - name: Verify Deployment
@@ -268,10 +245,8 @@ jobs:
             echo "Contents of the bucket:"
             aws s3 ls "s3://$BUCKET_NAME/"
             
-            # Create a presigned URL for the object
-            echo "Creating a presigned URL for direct access:"
-            PRESIGNED_URL=$(aws s3 presign "s3://$BUCKET_NAME/hr-portal-app.tar" --expires-in 86400)
-            echo "Presigned URL (valid for 24 hours): $PRESIGNED_URL"
+            # Create a public URL for the object
+            echo "Public URL: https://$BUCKET_NAME.s3.amazonaws.com/hr-portal-app.tar"
           else
             echo "Bucket name not available"
           fi

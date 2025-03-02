@@ -20,7 +20,7 @@ resource "aws_instance" "hr_portal_ec2" {
     # Create a test file to verify script execution
     echo "Script executed at $(date)" > /tmp/script-executed.txt
     
-    # Create application directory
+    # Create application directory with explicit permissions
     mkdir -p /tmp/hrApp
     chmod -R 777 /tmp/hrApp
     echo "Created hrApp directory at $(date)" > /tmp/hrApp/created.txt
@@ -132,6 +132,14 @@ resource "aws_instance" "hr_portal_ec2" {
     echo "Docker status: $(docker --version 2>&1)" > /var/www/html/docker-status.txt
     echo "Service status: $(systemctl status docker 2>&1)" >> /var/www/html/docker-status.txt
     echo "Test container: $(docker run --rm hello-world 2>&1)" >> /var/www/html/docker-status.txt
+    
+    # Configure AWS CLI with the instance region
+    echo "Configuring AWS CLI default region..."
+    mkdir -p /root/.aws
+    cat > /root/.aws/config <<EOL
+    [default]
+    region = us-east-1
+    EOL
     
     # Create a file to indicate script completion
     echo "User data script execution completed successfully at $(date)!" > /tmp/user-data-complete.txt
