@@ -1,4 +1,3 @@
-
 name: HR Portal - Check Resources
 on:
   workflow_call:
@@ -69,17 +68,26 @@ jobs:
           EC2_EXISTS=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region us-east-1 | jq '.Reservations | length')
           if [ "$EC2_EXISTS" -gt 0 ]; then
             echo "existing_resources=true" >> $GITHUB_OUTPUT
-            EC2_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region us-east-1 | jq -r '.Reservations[0].Instances[0].PublicIpAddress // "unavailable"' | tr -d '\n')
+            
+            # Get EC2 IP and clean it
+            EC2_IP_RAW=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region us-east-1 | jq -r '.Reservations[0].Instances[0].PublicIpAddress // "unavailable"')
+            EC2_IP=$(echo "$EC2_IP_RAW" | grep -o '^[0-9.]*' || echo "unavailable")
             echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
-            API_ID=$(aws apigateway get-rest-apis --region us-east-1 | jq -r '.items[] | select(.name=="hr-portal-api") | .id // ""' | tr -d '\n')
+            
+            # Get API Gateway URL
+            API_ID_RAW=$(aws apigateway get-rest-apis --region us-east-1 | jq -r '.items[] | select(.name=="hr-portal-api") | .id // ""')
+            API_ID=$(echo "$API_ID_RAW" | grep -o '^[a-zA-Z0-9]*' || echo "")
             if [ -n "$API_ID" ]; then
               API_URL="https://$API_ID.execute-api.us-east-1.amazonaws.com/prod"
               echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
             else
               echo "API_URL=unavailable" >> $GITHUB_OUTPUT
             fi
-            ALB_NAME=$(aws elbv2 describe-load-balancers --region us-east-1 | jq -r '.LoadBalancers[] | select(.LoadBalancerName=="hr-portal-alb") | .DNSName // ""' | tr -d '\n')
-            if [ -n "$ALB_NAME" ]; then
+            
+            # Get ALB DNS
+            ALB_NAME_RAW=$(aws elbv2 describe-load-balancers --region us-east-1 | jq -r '.LoadBalancers[] | select(.LoadBalancerName=="hr-portal-alb") | .DNSName // ""')
+            ALB_NAME=$(echo "$ALB_NAME_RAW" | grep -o '^[a-zA-Z0-9.-]*' || echo "unavailable")
+            if [ -n "$ALB_NAME" ] && [ "$ALB_NAME" != "unavailable" ]; then
               echo "ALB_DNS=$ALB_NAME" >> $GITHUB_OUTPUT
             else
               echo "ALB_DNS=unavailable" >> $GITHUB_OUTPUT

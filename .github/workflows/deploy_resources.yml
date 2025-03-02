@@ -81,11 +81,25 @@ jobs:
         id: terraform_outputs
         run: |
           cd terraform
-          EC2_IP=$(terraform output -raw ec2_public_ip 2>/dev/null | tr -d '\n' || echo "unavailable")
-          ALB_DNS=$(terraform output -raw alb_dns_name 2>/dev/null | tr -d '\n' || echo "unavailable")
-          API_URL=$(terraform output -raw api_gateway_url 2>/dev/null | tr -d '\n' || echo "unavailable")
           
-          INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --query "Reservations[0].Instances[0].InstanceId" --output text 2>/dev/null | tr -d '\n' || echo "unavailable")
+          # Extract values directly from raw output and clean them
+          EC2_OUTPUT=$(terraform output -raw ec2_public_ip || echo "unavailable")
+          EC2_IP=$(echo "$EC2_OUTPUT" | grep -o '^[0-9.]*' || echo "unavailable")
+          
+          ALB_OUTPUT=$(terraform output -raw alb_dns_name || echo "unavailable")
+          ALB_DNS=$(echo "$ALB_OUTPUT" | grep -o '^[a-zA-Z0-9.-]*' || echo "unavailable")
+          
+          API_OUTPUT=$(terraform output -raw api_gateway_url || echo "unavailable")
+          API_URL=$(echo "$API_OUTPUT" | grep -o '^https://[a-zA-Z0-9./-]*' || echo "unavailable")
+          
+          INSTANCE_OUTPUT=$(terraform output -raw instance_id || echo "unavailable")
+          INSTANCE_ID=$(echo "$INSTANCE_OUTPUT" | grep -o '^i-[a-z0-9]*' || echo "unavailable")
+          
+          # If extraction failed, attempt to get instance ID from AWS CLI
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --query "Reservations[0].Instances[0].InstanceId" --output text || echo "unavailable")
+            INSTANCE_ID=$(echo "$INSTANCE_ID" | grep -o '^i-[a-z0-9]*' || echo "unavailable")
+          fi
           
           echo "EC2_IP=${EC2_IP}" >> $GITHUB_OUTPUT
           echo "API_URL=${API_URL}" >> $GITHUB_OUTPUT
@@ -109,29 +123,36 @@ jobs:
           
           echo "Waiting for instance $INSTANCE_ID to be fully initialized..."
           
-          # Wait for instance to be running
-          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+          # Set a reasonable timeout
+          timeout=600  # 10 minutes
+          interval=15  # 15 seconds
+          elapsed=0
           
-          # Wait for SSM agent to be online
-          MAX_ATTEMPTS=20
-          for i in $(seq 1 $MAX_ATTEMPTS); do
-            echo "Attempt $i/$MAX_ATTEMPTS: Checking SSM status..."
-            SSM_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[].PingStatus" --output text || echo "OFFLINE")
+          # Wait for instance to be running
+          echo "Checking if instance is running..."
+          while [ $elapsed -lt $timeout ]; do
+            STATUS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].State.Name' --output text || echo "unknown")
+            echo "Instance status: $STATUS"
             
-            if [ "$SSM_STATUS" == "Online" ]; then
-              echo "SSM agent is online!"
+            if [ "$STATUS" == "running" ]; then
+              echo "Instance is running!"
+              break
+            elif [ "$STATUS" == "terminated" ] || [ "$STATUS" == "shutting-down" ]; then
+              echo "Instance is in a terminal state: $STATUS"
+              echo "Continuing workflow but deployment may fail"
               break
             fi
             
-            if [ $i -eq $MAX_ATTEMPTS ]; then
-              echo "Max attempts reached but instance is still not ready. Continuing anyway..."
-            fi
-            
-            echo "Instance not ready. Waiting 30 seconds..."
-            sleep 30
+            sleep $interval
+            elapsed=$((elapsed + interval))
+            echo "Waited for $elapsed seconds..."
           done
           
-          # Additional wait for system services
+          if [ $elapsed -ge $timeout ]; then
+            echo "Timeout waiting for instance to be running, but continuing workflow"
+          fi
+          
+          # Wait additional time for services to start
           echo "Waiting an additional minute for all services to start..."
           sleep 60
       

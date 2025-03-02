@@ -79,6 +79,10 @@ resource "aws_instance" "hr_portal_ec2" {
     echo "Marking instance as ready for SSM commands..."
     touch /var/lib/cloud/instance/boot-finished
     
+    # Create a healthcheck file that can be used to verify the instance is ready
+    echo "Creating health check file..."
+    echo "Instance initialized at $(date)" > /var/www/html/health.txt
+    
     echo "User data script execution completed successfully at $(date)!"
   EOF
 
