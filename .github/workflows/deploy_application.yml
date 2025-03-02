@@ -21,41 +21,277 @@ jobs:
   s3_operations:
     runs-on: ubuntu-latest
     if: ${{ inputs.instance_id != 'unavailable' }}
-    uses: ./.github/workflows/s3_operations.yml
-    with:
-      instance_id: ${{ inputs.instance_id }}
-    secrets: inherit
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Build and save Docker image
+        id: build_docker
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          # Build the Docker image locally in the GitHub Actions runner
+          echo "Building Docker image..."
+          docker build -t hr-portal-app:latest .
+          docker save hr-portal-app:latest > hr-portal-app.tar
+
+      - name: Create S3 bucket and upload Docker image
+        id: create_bucket
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          # Create unique bucket name and store it as an environment variable for later steps
+          BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          
+          # Create temporary S3 bucket with unique name 
+          echo "Creating temporary S3 bucket: $BUCKET_NAME"
+          aws s3 mb s3://$BUCKET_NAME
+          
+          echo "Setting bucket policy for EC2 role access..."
+          # Create a temporary policy file
+          cat > /tmp/bucket-policy.json <<EOL
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "AWS": "arn:aws:iam::*:role/hr-portal-ec2-role"
+                },
+                "Action": ["s3:GetObject", "s3:ListBucket"],
+                "Resource": [
+                  "arn:aws:s3:::$BUCKET_NAME",
+                  "arn:aws:s3:::$BUCKET_NAME/*"
+                ]
+              }
+            ]
+          }
+          EOL
+          
+          aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy file:///tmp/bucket-policy.json || echo "Could not set bucket policy, continuing..."
+          
+          # Upload Docker image to S3 without setting public ACLs
+          echo "Uploading Docker image to S3..."
+          aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
+          
+          # List bucket contents to verify upload
+          echo "Verifying upload with bucket listing:"
+          aws s3 ls s3://$BUCKET_NAME/
+    outputs:
+      bucket_name: ${{ steps.create_bucket.outputs.bucket_name }}
     
   docker_setup:
     runs-on: ubuntu-latest
     needs: s3_operations
     if: ${{ inputs.instance_id != 'unavailable' }}
-    uses: ./.github/workflows/docker_operations.yml
-    with:
-      instance_id: ${{ inputs.instance_id }}
-      bucket_name: ${{ needs.s3_operations.outputs.bucket_name }}
-    secrets: inherit
-    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Verify Docker Installation on EC2
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          
+          echo "Running thorough Docker installation verification..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters '{"commands":[
+              "echo \"===== CHECKING DOCKER INSTALLATION =====\" > /tmp/docker-verification.log",
+              "echo \"Command check:\" >> /tmp/docker-verification.log",
+              "command -v docker >> /tmp/docker-verification.log 2>&1 || echo \"Docker command not found\" >> /tmp/docker-verification.log",
+              "echo \"Package check:\" >> /tmp/docker-verification.log",
+              "yum list installed docker >> /tmp/docker-verification.log 2>&1 || echo \"Docker package not found\" >> /tmp/docker-verification.log",
+              "echo \"Version check:\" >> /tmp/docker-verification.log",
+              "docker --version >> /tmp/docker-verification.log 2>&1 || echo \"Docker version command failed\" >> /tmp/docker-verification.log",
+              "echo \"Service check:\" >> /tmp/docker-verification.log",
+              "systemctl status docker >> /tmp/docker-verification.log 2>&1 || echo \"Docker service not running\" >> /tmp/docker-verification.log",
+              "echo \"===== INSTALLING/REINSTALLING DOCKER IF NEEDED =====\" >> /tmp/docker-verification.log",
+              "amazon-linux-extras install -y docker >> /tmp/docker-verification.log 2>&1 || yum install -y docker >> /tmp/docker-verification.log 2>&1",
+              "systemctl enable docker >> /tmp/docker-verification.log 2>&1",
+              "systemctl restart docker >> /tmp/docker-verification.log 2>&1",
+              "echo \"===== FINAL VERIFICATION =====\" >> /tmp/docker-verification.log",
+              "docker --version >> /tmp/docker-verification.log 2>&1",
+              "systemctl status docker >> /tmp/docker-verification.log 2>&1",
+              "echo \"===== VERIFICATION COMPLETE =====\" >> /tmp/docker-verification.log",
+              "cat /tmp/docker-verification.log"
+            ]}' \
+            --comment "Thorough Docker verification"
+          
+          # Wait for the verification to complete
+          echo "Waiting for Docker verification to complete..."
+          sleep 30
+      
+      - name: Create and prepare hrApp directory
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          
+          echo "Creating and preparing /tmp/hrApp directory with proper permissions..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters '{"commands":[
+              "echo \"===== PREPARING DIRECTORY =====\" > /tmp/dir-preparation.log",
+              "mkdir -p /tmp/hrApp",
+              "chmod -R 777 /tmp/hrApp",
+              "echo \"Directory created at $(date)\" >> /tmp/dir-preparation.log",
+              "echo \"Directory permissions:\" >> /tmp/dir-preparation.log",
+              "ls -la /tmp | grep hrApp >> /tmp/dir-preparation.log",
+              "echo \"Current user: $(whoami)\" >> /tmp/dir-preparation.log",
+              "echo \"AWS CLI version:\" >> /tmp/dir-preparation.log",
+              "aws --version >> /tmp/dir-preparation.log 2>&1 || echo \"AWS CLI not installed\" >> /tmp/dir-preparation.log",
+              "if ! command -v aws &> /dev/null; then",
+              "  echo \"Installing AWS CLI...\" >> /tmp/dir-preparation.log",
+              "  yum install -y aws-cli >> /tmp/dir-preparation.log 2>&1",
+              "fi",
+              "echo \"===== DIRECTORY PREPARATION COMPLETE =====\" >> /tmp/dir-preparation.log",
+              "cat /tmp/dir-preparation.log"
+            ]}' \
+            --comment "Prepare hrApp directory"
+          
+          echo "Waiting for directory preparation to complete..."
+          sleep 20
+  
   deploy_container:
     runs-on: ubuntu-latest
     needs: [s3_operations, docker_setup]
     if: ${{ inputs.instance_id != 'unavailable' }}
-    uses: ./.github/workflows/deploy_container.yml
-    with:
-      instance_id: ${{ inputs.instance_id }}
-      bucket_name: ${{ needs.s3_operations.outputs.bucket_name }}
-    secrets: inherit
-    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Deploy Docker container to EC2
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          BUCKET_NAME=${{ needs.s3_operations.outputs.bucket_name }}
+          
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping deployment."
+            exit 0
+          fi
+          
+          # Deploy using SSM with simplified download methods
+          echo "Deploying Docker container to EC2..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "{\"commands\":[
+              \"echo \\\"====== STARTING DEPLOYMENT \$(date) ======\\\" > /tmp/deployment.log\",
+              
+              \"echo \\\"Bucket name: '$BUCKET_NAME'\\\" >> /tmp/deployment.log\",
+              \"echo \\\"S3 URL: s3://$BUCKET_NAME/hr-portal-app.tar\\\" >> /tmp/deployment.log\",
+              
+              \"echo \\\"===== CONFIGURING AWS =====\\\" >> /tmp/deployment.log\",
+              \"if ! command -v aws &> /dev/null; then\",
+              \"  echo \\\"Installing AWS CLI...\\\" >> /tmp/deployment.log\",
+              \"  yum install -y aws-cli >> /tmp/deployment.log 2>&1\",
+              \"fi\",
+              
+              \"echo \\\"Configuring AWS region...\\\" >> /tmp/deployment.log\",
+              \"aws configure set region us-east-1 >> /tmp/deployment.log 2>&1\",
+              
+              \"echo \\\"Verifying AWS credentials...\\\" >> /tmp/deployment.log\",
+              \"aws sts get-caller-identity >> /tmp/deployment.log 2>&1 || echo \\\"Failed to get caller identity\\\" >> /tmp/deployment.log\",
+              
+              \"echo \\\"===== DOWNLOAD ATTEMPTS =====\\\" >> /tmp/deployment.log\",
+              \"echo \\\"Attempt 1: Using instance profile credentials...\\\" >> /tmp/deployment.log\",
+              \"aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1\",
+              
+              \"echo \\\"Checking if download was successful...\\\" >> /tmp/deployment.log\",
+              \"ls -la /tmp/hrApp/ >> /tmp/deployment.log 2>&1\",
+              
+              \"if [ ! -f \\\"/tmp/hrApp/hr-portal-app.tar\\\" ]; then\",
+              \"  echo \\\"ERROR: Failed to download Docker image\\\" >> /tmp/deployment.log\",
+              \"  echo \\\"Attempting direct download via URL...\\\" >> /tmp/deployment.log\",
+              \"  curl -L -o /tmp/hrApp/hr-portal-app.tar \\\"https://$BUCKET_NAME.s3.amazonaws.com/hr-portal-app.tar\\\" >> /tmp/deployment.log 2>&1\",
+              \"fi\",
+              
+              \"if [ ! -f \\\"/tmp/hrApp/hr-portal-app.tar\\\" ]; then\",
+              \"  echo \\\"CRITICAL ERROR: All download attempts failed\\\" >> /tmp/deployment.log\",
+              \"  cat /tmp/deployment.log\",
+              \"  exit 1\",
+              \"fi\",
+              
+              \"echo \\\"===== DOCKER DEPLOYMENT =====\\\" >> /tmp/deployment.log\",
+              \"echo \\\"Loading Docker image...\\\" >> /tmp/deployment.log\",
+              \"sudo docker load -i /tmp/hrApp/hr-portal-app.tar >> /tmp/deployment.log 2>&1\",
+              
+              \"echo \\\"Removing existing container if any...\\\" >> /tmp/deployment.log\",
+              \"sudo docker stop hr-portal-container >> /tmp/deployment.log 2>&1 || echo \\\"No container to stop\\\" >> /tmp/deployment.log\",
+              \"sudo docker rm hr-portal-container >> /tmp/deployment.log 2>&1 || echo \\\"No container to remove\\\" >> /tmp/deployment.log\",
+              
+              \"echo \\\"Running new container...\\\" >> /tmp/deployment.log\",
+              \"sudo docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest >> /tmp/deployment.log 2>&1\",
+              
+              \"echo \\\"Verifying container is running...\\\" >> /tmp/deployment.log\",
+              \"sudo docker ps >> /tmp/deployment.log 2>&1\",
+              \"sudo docker logs hr-portal-container >> /tmp/deployment.log 2>&1\",
+              
+              \"echo \\\"====== DEPLOYMENT COMPLETED \$(date) ======\\\" >> /tmp/deployment.log\",
+              \"cat /tmp/deployment.log\"
+            ]}" \
+            --comment "Deploy HR Portal Docker container"
+            
   verify_deployment:
     runs-on: ubuntu-latest
     needs: deploy_container
     if: ${{ inputs.instance_id != 'unavailable' }}
-    uses: ./.github/workflows/verify_deployment.yml
-    with:
-      instance_id: ${{ inputs.instance_id }}
-      ec2_ip: ${{ inputs.ec2_ip }}
-    secrets: inherit
-    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          
+      - name: Verify Deployment
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          EC2_IP=${{ inputs.ec2_ip }}
+          
+          echo "Waiting 30 seconds for container to fully initialize..."
+          sleep 30
+          
+          echo "Verifying deployment..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters '{"commands":[
+              "echo \"===== DEPLOYMENT VERIFICATION =====\"",
+              "echo \"Container status:\"",
+              "sudo docker ps",
+              "echo \"Container logs:\"",
+              "sudo docker logs hr-portal-container 2>&1 || echo \"No logs available\"",
+              "echo \"Web server response:\"",
+              "curl -s -o /dev/null -w \"%{http_code}\" http://localhost || echo \"Failed to connect\"",
+              "echo \"Files in /tmp/hrApp:\"",
+              "ls -la /tmp/hrApp/",
+              "echo \"Docker images:\"",
+              "sudo docker images",
+              "echo \"System disk space:\"",
+              "df -h",
+              "echo \"===== VERIFICATION COMPLETE =====\""
+            ]}' \
+            --comment "Verify HR Portal container deployment"
+            
   preserve_bucket_info:
     runs-on: ubuntu-latest
     needs: [s3_operations, verify_deployment]
