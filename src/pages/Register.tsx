@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { Link } from "react-router-dom";
 
 const Register = () => {
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [companyCode, setCompanyCode] = useState("");
@@ -27,10 +28,21 @@ const Register = () => {
     e.preventDefault();
     
     // Basic validation
-    if (!name || !username || !password || !companyCode) {
+    if (!name || !email || !password || !companyCode) {
       toast({
         title: "Registration failed",
         description: "All fields are required",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast({
+        title: "Invalid email",
+        description: "Please enter a valid email address",
         variant: "destructive",
       });
       return;
@@ -49,7 +61,7 @@ const Register = () => {
     
     // Simulate API call delay
     setTimeout(() => {
-      const user = register(username, password, name, companyCode);
+      const user = register(email, password, name, companyCode);
       
       if (user) {
         setCurrentUser(user);
@@ -61,7 +73,7 @@ const Register = () => {
       } else {
         toast({
           title: "Registration failed",
-          description: "Invalid company code or username already exists",
+          description: "Invalid company code or email already exists",
           variant: "destructive",
         });
       }
@@ -114,10 +126,11 @@ const Register = () => {
               </div>
               <div className="space-y-2">
                 <Input 
-                  id="username" 
-                  placeholder="Username" 
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  id="email" 
+                  type="email"
+                  placeholder="Email Address" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="bg-white/70"
                 />
               </div>

@@ -11,7 +11,7 @@ import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Login = () => {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [sqlQuery, setSqlQuery] = useState("");
@@ -25,15 +25,28 @@ const Login = () => {
   
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Basic email validation on the front-end only
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast({
+        title: "Invalid email format",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setLoading(true);
     
     // Show SQL query that would be executed (for demo purposes)
-    const demoQuery = `SELECT * FROM users WHERE username='${username}' AND password='${password}'`;
+    const demoQuery = `SELECT * FROM users WHERE email='${email}' AND password='${password}'`;
     setSqlQuery(demoQuery);
     
     // Simulate API call delay
     setTimeout(() => {
-      const user = login(username, password);
+      // The backend doesn't validate the email format - it passes it directly to the query
+      const user = login(email, password);
       
       if (user) {
         setCurrentUser(user);
@@ -45,7 +58,7 @@ const Login = () => {
       } else {
         toast({
           title: "Login failed",
-          description: "Invalid username or password",
+          description: "Invalid email or password",
           variant: "destructive",
         });
       }
@@ -89,10 +102,11 @@ const Login = () => {
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <Input 
-                  id="username" 
-                  placeholder="Username" 
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  id="email" 
+                  type="email"
+                  placeholder="Email Address" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="bg-white/70"
                 />
               </div>
@@ -115,7 +129,7 @@ const Login = () => {
                     {sqlQuery}
                   </AlertDescription>
                   <AlertDescription className="mt-2 text-xs">
-                    Try: <code className="bg-gray-100 p-1 rounded">admin' --</code> as username
+                    Try: <code className="bg-gray-100 p-1 rounded">admin@example.com' --</code> as email
                   </AlertDescription>
                 </Alert>
               )}
