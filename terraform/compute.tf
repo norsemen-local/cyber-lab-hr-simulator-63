@@ -29,6 +29,45 @@ resource "aws_instance" "hr_portal_ec2" {
     echo "Updating system packages..."
     yum update -y
     
+    # Install AWS CLI first for SSM registration
+    echo "Installing AWS CLI..."
+    yum install -y aws-cli
+    
+    # Configure AWS CLI with the instance region
+    echo "Configuring AWS CLI default region..."
+    mkdir -p /root/.aws
+    cat > /root/.aws/config <<EOL
+    [default]
+    region = us-east-1
+    EOL
+    
+    # Install and start SSM Agent with special care
+    echo "Installing and configuring SSM Agent..."
+    yum install -y amazon-ssm-agent
+    
+    # Configure SSM Agent with the correct region
+    mkdir -p /etc/amazon/ssm
+    cat > /etc/amazon/ssm/amazon-ssm-agent.json <<EOL
+    {
+      "Profile": "ssm",
+      "Region": "us-east-1"
+    }
+    EOL
+    
+    # Restart SSM Agent to apply new configuration
+    systemctl enable amazon-ssm-agent
+    systemctl stop amazon-ssm-agent
+    sleep 5
+    systemctl start amazon-ssm-agent
+    
+    # Check SSM agent status
+    echo "Checking SSM agent status..."
+    systemctl status amazon-ssm-agent
+    
+    # Create a file to indicate SSM is ready
+    mkdir -p /var/lib/amazon/ssm
+    touch /var/lib/amazon/ssm/ssm-agent-initialized
+    
     # Install Docker with robust error handling
     echo "Installing Docker..."
     amazon-linux-extras install -y docker || {
@@ -57,27 +96,9 @@ resource "aws_instance" "hr_portal_ec2" {
     # Add ec2-user to docker group
     usermod -aG docker ec2-user
     
-    # Install AWS CLI for S3 access
-    echo "Installing AWS CLI..."
-    yum install -y aws-cli
-    
     # Install additional development tools
     echo "Installing development tools..."
     yum groupinstall -y "Development Tools"
-    
-    # Install and configure SSM Agent
-    echo "Installing and configuring SSM Agent..."
-    yum install -y amazon-ssm-agent || echo "SSM agent installation failed, may already be installed"
-    systemctl enable amazon-ssm-agent
-    systemctl start amazon-ssm-agent
-    
-    # Check SSM agent status
-    echo "Checking SSM agent status..."
-    systemctl status amazon-ssm-agent
-    
-    # Create a file to indicate SSM is ready
-    mkdir -p /var/lib/amazon/ssm
-    touch /var/lib/amazon/ssm/ssm-agent-initialized
     
     # Create a directory for the application
     echo "Creating application directory..."
@@ -132,14 +153,6 @@ resource "aws_instance" "hr_portal_ec2" {
     echo "Docker status: $(docker --version 2>&1)" > /var/www/html/docker-status.txt
     echo "Service status: $(systemctl status docker 2>&1)" >> /var/www/html/docker-status.txt
     echo "Test container: $(docker run --rm hello-world 2>&1)" >> /var/www/html/docker-status.txt
-    
-    # Configure AWS CLI with the instance region
-    echo "Configuring AWS CLI default region..."
-    mkdir -p /root/.aws
-    cat > /root/.aws/config <<EOL
-    [default]
-    region = us-east-1
-    EOL
     
     # Create a file to indicate script completion
     echo "User data script execution completed successfully at $(date)!" > /tmp/user-data-complete.txt
