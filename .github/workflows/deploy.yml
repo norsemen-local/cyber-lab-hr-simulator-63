@@ -87,43 +87,61 @@ jobs:
           INSTANCE_ID=$(cd terraform && terraform state show aws_instance.hr_portal_ec2 | grep "id" | head -n 1 | awk -F= '{print $2}' | xargs)
           echo "Instance ID: $INSTANCE_ID"
           
-          # Wait for the instance to be fully initialized and SSM agent to be ready
+          # Wait longer for the instance to be fully initialized
           echo "Waiting for instance to be ready for SSM commands..."
-          sleep 60
-          
-          # Check if instance is available in SSM
-          SSM_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[].PingStatus" --output text || echo "OFFLINE")
-          echo "SSM Status: $SSM_STATUS"
-          
-          if [ "$SSM_STATUS" != "Online" ]; then
-            echo "Instance is not yet available via SSM. Waiting longer..."
-            sleep 60
+          for i in {1..20}; do
+            echo "Attempt $i/20: Checking if instance is ready..."
             
-            # Try to describe the instance to get its status
-            INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].State.Name" --output text)
+            # Check instance state
+            INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].State.Name" --output text || echo "unknown")
             echo "Instance state: $INSTANCE_STATE"
             
             if [ "$INSTANCE_STATE" != "running" ]; then
-              echo "Instance is not in running state. Current state: $INSTANCE_STATE"
-              echo "Will try to deploy using alternate method."
+              echo "Instance is not in running state. Waiting 30 seconds..."
+              sleep 30
+              continue
             fi
-          fi
+            
+            # Check SSM status
+            SSM_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[].PingStatus" --output text || echo "OFFLINE")
+            echo "SSM Status: $SSM_STATUS"
+            
+            if [ "$SSM_STATUS" == "Online" ]; then
+              echo "Instance is ready and accessible via SSM!"
+              break
+            fi
+            
+            echo "Instance is not yet available via SSM. Waiting 30 seconds..."
+            sleep 30
+          done
           
-          # Try to use SSM to deploy the application
-          echo "Attempting to deploy via SSM..."
+          # Try a simple SSM command first to verify connectivity
+          echo "Testing SSM connectivity with a simple command..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=['mkdir -p /var/www/html', 'echo \"Deployment successful!\" > /var/www/html/index.html', 'sudo systemctl restart nginx']" \
-            --comment "Deploy HR Portal application" || echo "SSM command failed, but continuing deployment"
+            --parameters "commands=['echo \"SSM test successful\"']" \
+            --comment "Testing SSM connectivity" || echo "Initial SSM test failed, but continuing deployment"
           
-          echo "Application deployment attempted!"
+          # Wait a bit more to ensure the command had time to process
+          sleep 10
+          
+          # Deploy web content regardless of SSM status
+          echo "Deploying application content..."
+          # Try to use SSM to deploy the application
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=['mkdir -p /var/www/html', 'echo \"<html><body><h1>HR Portal Deployment Success!</h1><p>Application deployed via GitHub Actions.</p></body></html>\" > /var/www/html/index.html', 'chmod -R 755 /var/www/html', 'sudo systemctl restart nginx']" \
+            --comment "Deploy HR Portal application" || echo "SSM deployment command failed. The instance may need more time to initialize."
+          
+          echo "Deployment process completed!"
           echo "EC2 Instance URL: http://$EC2_IP"
           echo "API Gateway URL: $API_URL"
           
-          # Even if SSM fails, we'll consider the infrastructure deployed
-          echo "Infrastructure has been deployed. If the application deployment via SSM failed,"
-          echo "you may need to manually deploy the application once the instance is fully initialized."
+          # Display information even if deployment failed
+          echo "If the application deployment via SSM failed, you may need to manually check the instance status"
+          echo "using AWS Console or connect to the instance once it's fully initialized."
       
       - name: Display URLs for existing deployment
         if: ${{ steps.check_resources.outputs.terraform_deployed == 'true' }}

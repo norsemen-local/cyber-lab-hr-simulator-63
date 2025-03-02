@@ -11,11 +11,16 @@ resource "aws_instance" "hr_portal_ec2" {
   user_data = <<-EOF
     #!/bin/bash
     yum update -y
-    yum install -y nginx mysql git amazon-ssm-agent
-    
-    # Start and enable SSM Agent
-    systemctl start amazon-ssm-agent
+    yum install -y nginx mysql git
+
+    # Install and configure SSM Agent
+    yum install -y amazon-ssm-agent
     systemctl enable amazon-ssm-agent
+    systemctl start amazon-ssm-agent
+    
+    # Create a file to indicate SSM is ready
+    mkdir -p /var/lib/amazon/ssm
+    touch /var/lib/amazon/ssm/ssm-agent-initialized
     
     # Start and enable Nginx
     systemctl start nginx
@@ -61,6 +66,9 @@ resource "aws_instance" "hr_portal_ec2" {
     
     # Restart Nginx to apply config
     systemctl restart nginx
+    
+    # Create a default index.html file
+    echo '<html><body><h1>HR Portal Deployment Success!</h1><p>The infrastructure has been successfully deployed.</p></body></html>' > /var/www/html/index.html
     
     # Signal that the instance is ready for SSM commands
     touch /var/lib/cloud/instance/boot-finished
