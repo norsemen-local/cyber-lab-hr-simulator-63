@@ -1,3 +1,4 @@
+
 name: Deploy to AWS
 
 on:
@@ -43,42 +44,31 @@ jobs:
       - name: Check for existing resources
         id: check_resources
         run: |
+          # Check if Terraform state exists
           cd terraform
-          # Check if Terraform state file exists
           if [[ -f terraform.tfstate ]]; then
-            echo "Terraform state file exists."
-            TERRAFORM_DEPLOYED="true"
+            echo "terraform_deployed=true" >> $GITHUB_OUTPUT
           else
-            echo "Terraform state file does not exist."
-            TERRAFORM_DEPLOYED="false"
+            echo "terraform_deployed=false" >> $GITHUB_OUTPUT
           fi
-          echo "terraform_deployed=${TERRAFORM_DEPLOYED}" >> $GITHUB_OUTPUT
 
           # Check if EC2 instance exists
-          EC2_COUNT=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region ${{ secrets.AWS_REGION }} | jq '.Reservations | length')
-          if [ "$EC2_COUNT" -gt 0 ]; then
-            echo "EC2 instance exists."
-            EXISTING_RESOURCES="true"
+          if aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region ${{ secrets.AWS_REGION }} | jq '.Reservations | length' | grep -q "[1-9]"; then
+            echo "existing_resources=true" >> $GITHUB_OUTPUT
             
-            # Retrieve EC2 public IP
-            EC2_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region ${{ secrets.AWS_REGION }} | jq '.Reservations[0].Instances[0].PublicIpAddress' | tr -d '"')
+            # Get EC2 IP
+            EC2_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region ${{ secrets.AWS_REGION }} | jq -r '.Reservations[0].Instances[0].PublicIpAddress')
             echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
             
-            # Retrieve API Gateway URL
-            API_ID=$(aws apigateway get-rest-apis --region ${{ secrets.AWS_REGION }} | jq '.items[] | select(.name=="hr-portal-api") | .id' | tr -d '"')
+            # Get API Gateway URL
+            API_ID=$(aws apigateway get-rest-apis --region ${{ secrets.AWS_REGION }} | jq -r '.items[] | select(.name=="hr-portal-api") | .id')
             if [ -n "$API_ID" ]; then
               API_URL="https://$API_ID.execute-api.${{ secrets.AWS_REGION }}.amazonaws.com/prod"
               echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
-            else
-              echo "API Gateway not found."
             fi
-            echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
-            echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
           else
-            echo "EC2 instance does not exist."
-            EXISTING_RESOURCES="false"
+            echo "existing_resources=false" >> $GITHUB_OUTPUT
           fi
-          echo "existing_resources=${EXISTING_RESOURCES}" >> $GITHUB_OUTPUT
           
       - name: Cancel deployment if resources exist
         if: ${{ steps.check_resources.outputs.existing_resources == 'true' || steps.check_resources.outputs.terraform_deployed == 'true' }}
@@ -104,74 +94,79 @@ jobs:
           cd terraform
           terraform apply -auto-approve -var="db_username=admin" -var="db_password=password123"
           
-      - name: Deploy Docker container to EC2
+      - name: Get infrastructure outputs
         if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
+        id: terraform_outputs
         run: |
-          # Get the public IP of the EC2 instance
           cd terraform
           EC2_IP=$(terraform output -raw ec2_public_ip)
           API_URL=$(terraform output -raw api_gateway_url)
           INSTANCE_ID=$(terraform state show aws_instance.hr_portal_ec2 | grep "id" | head -n 1 | awk -F= '{print $2}' | xargs)
           
-          echo "EC2 IP: $EC2_IP"
-          echo "Instance ID: $INSTANCE_ID"
+          echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
+          echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_OUTPUT
           
-          # Wait for the instance to be ready - increased wait time
-          echo "Waiting for instance to be fully initialized and ready for SSM commands..."
-          MAX_ATTEMPTS=40
+      - name: Wait for instance to be ready
+        if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
+        id: wait_for_instance
+        run: |
+          INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
+          echo "Waiting for instance $INSTANCE_ID to be fully initialized..."
+          
+          # Wait for instance to be running
+          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+          
+          # Wait for SSM agent to be online
+          MAX_ATTEMPTS=20
           for i in $(seq 1 $MAX_ATTEMPTS); do
-            echo "Attempt $i/$MAX_ATTEMPTS: Checking if instance is ready..."
-            
-            # Check instance state
-            INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].State.Name" --output text || echo "unknown")
-            echo "Instance state: $INSTANCE_STATE"
-            
-            if [ "$INSTANCE_STATE" != "running" ]; then
-              echo "Instance is not in running state. Waiting 30 seconds..."
-              sleep 30
-              continue
-            fi
-            
-            # Check SSM status
+            echo "Attempt $i/$MAX_ATTEMPTS: Checking SSM status..."
             SSM_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[].PingStatus" --output text || echo "OFFLINE")
-            echo "SSM Status: $SSM_STATUS"
             
             if [ "$SSM_STATUS" == "Online" ]; then
-              echo "Instance is ready and accessible via SSM!"
+              echo "SSM agent is online!"
               break
             fi
             
-            echo "Instance is not yet available via SSM. Waiting 30 seconds..."
-            sleep 30
-            
-            # If we've reached the last attempt and still not ready, continue anyway
             if [ $i -eq $MAX_ATTEMPTS ]; then
-              echo "Max attempts reached but instance is still not fully ready. Proceeding anyway..."
+              echo "Max attempts reached but instance is still not ready. Continuing anyway..."
             fi
+            
+            echo "Instance not ready. Waiting 30 seconds..."
+            sleep 30
           done
           
-          # Wait more time for the instance to fully initialize
-          echo "Waiting an additional 2 minutes for instance services to fully start..."
-          sleep 120
+          # Additional wait for system services
+          echo "Waiting an additional minute for all services to start..."
+          sleep 60
           
-          # Test SSH connectivity with a simple command
-          echo "Testing SSM connectivity with a simple command..."
+      - name: Test instance connectivity
+        if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
+        run: |
+          INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
+          
+          echo "Testing instance with simple SSM command..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
             --parameters "commands=['echo \"SSM test successful\"', 'docker --version || amazon-linux-extras install -y docker', 'systemctl status docker || systemctl start docker']" \
-            --comment "Testing SSM connectivity and Docker installation" || echo "Initial SSM test failed, but continuing deployment"
-          
+            --comment "Testing SSM connectivity and Docker installation"
+            
           sleep 15
           
-          # Transfer the Docker image to the EC2 instance
-          echo "Transferring Docker image to EC2 instance..."
-          aws s3 mb s3://hr-portal-docker-temp-$(date +%s) || echo "S3 bucket already exists"
-          BUCKET_NAME=$(aws s3 ls | grep hr-portal-docker-temp | tail -n 1 | awk '{print $3}')
+      - name: Deploy Docker container
+        if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
+        run: |
+          INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
+          EC2_IP=${{ steps.terraform_outputs.outputs.EC2_IP }}
+          
+          # Create temporary S3 bucket for Docker image transfer
+          BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
+          aws s3 mb s3://$BUCKET_NAME
           aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
           
-          # Deploy Docker container
-          echo "Deploying Docker container..."
+          # Deploy Docker container via SSM
+          echo "Deploying Docker container to EC2..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
@@ -182,25 +177,19 @@ jobs:
               'docker stop hr-portal-container || true',
               'docker rm hr-portal-container || true',
               'docker run -d --name hr-portal-container -p 80:80 hr-portal-app:latest',
-              'echo \"Verifying Docker container is running...\"',
+              'echo \"Docker container status:\"',
               'docker ps',
-              'echo \"Testing web server...\"',
-              'curl -s http://localhost || echo \"Could not connect to web server\"',
-              'echo \"Deployment completed at $(date)\"'
+              'curl -s http://localhost || echo \"Could not connect to web server\"'
             ]" \
-            --comment "Deploy HR Portal Docker container" || echo "SSM deployment command failed, but infrastructure is deployed"
+            --comment "Deploy HR Portal Docker container"
           
           # Clean up S3 bucket
           aws s3 rm s3://$BUCKET_NAME/hr-portal-app.tar
           aws s3 rb s3://$BUCKET_NAME
           
-          echo "Deployment process completed!"
-          echo "EC2 Instance URL: http://$EC2_IP"
-          echo "API Gateway URL: $API_URL"
-          
-          # Display information even if deployment failed
-          echo "If the application deployment via SSM failed, you may need to manually check the instance status"
-          echo "using AWS Console or connect to the instance once it's fully initialized."
+          echo "Deployment completed!"
+          echo "Application URL: http://$EC2_IP"
+          echo "API Gateway URL: ${{ steps.terraform_outputs.outputs.API_URL }}"
       
       - name: Display URLs for existing deployment
         if: ${{ steps.check_resources.outputs.terraform_deployed == 'true' }}
