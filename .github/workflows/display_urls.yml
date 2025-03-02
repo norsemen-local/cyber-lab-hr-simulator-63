@@ -48,6 +48,7 @@ jobs:
     steps:
       - name: Display deployment URLs
         run: |
+          echo "============= DEPLOYMENT INFORMATION ============="
           if [[ "${{ inputs.existing_resources }}" == "true" || "${{ inputs.terraform_deployed }}" == "true" ]]; then
             echo "Application is already deployed!"
             echo "EC2 Instance URL: http://${{ inputs.check_ec2_ip }}"
@@ -59,3 +60,4 @@ jobs:
             echo "ALB URL: http://${{ inputs.deploy_alb_dns }}"
             echo "API Gateway URL: ${{ inputs.deploy_api_url }}"
           fi
+          echo "=================================================="

@@ -18,3 +18,9 @@ output "api_gateway_url" {
   description = "URL of the API Gateway"
   value       = "${aws_api_gateway_deployment.api_deployment.invoke_url}${aws_api_gateway_stage.api_stage.stage_name}"
 }
+
+# Add new output for instance ID
+output "instance_id" {
+  description = "ID of the EC2 instance"
+  value       = aws_instance.hr_portal_ec2.id
+}
