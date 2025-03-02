@@ -1,4 +1,3 @@
-
 name: Deploy to AWS
 
 on:
@@ -44,20 +43,54 @@ jobs:
       - name: Check for existing resources
         id: check_resources
         run: |
-          # ... keep existing code (resource checking logic)
+          cd terraform
+          # Check if Terraform state file exists
+          if [[ -f terraform.tfstate ]]; then
+            echo "Terraform state file exists."
+            TERRAFORM_DEPLOYED="true"
+          else
+            echo "Terraform state file does not exist."
+            TERRAFORM_DEPLOYED="false"
+          fi
+          echo "terraform_deployed=${TERRAFORM_DEPLOYED}" >> $GITHUB_OUTPUT
+
+          # Check if EC2 instance exists
+          EC2_COUNT=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region ${{ secrets.AWS_REGION }} | jq '.Reservations | length')
+          if [ "$EC2_COUNT" -gt 0 ]; then
+            echo "EC2 instance exists."
+            EXISTING_RESOURCES="true"
+            
+            # Retrieve EC2 public IP
+            EC2_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region ${{ secrets.AWS_REGION }} | jq '.Reservations[0].Instances[0].PublicIpAddress' | tr -d '"')
+            echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
+            
+            # Retrieve API Gateway URL
+            API_ID=$(aws apigateway get-rest-apis --region ${{ secrets.AWS_REGION }} | jq '.items[] | select(.name=="hr-portal-api") | .id' | tr -d '"')
+            if [ -n "$API_ID" ]; then
+              API_URL="https://$API_ID.execute-api.${{ secrets.AWS_REGION }}.amazonaws.com/prod"
+              echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+            else
+              echo "API Gateway not found."
+            fi
+            echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
+            echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+          else
+            echo "EC2 instance does not exist."
+            EXISTING_RESOURCES="false"
+          fi
+          echo "existing_resources=${EXISTING_RESOURCES}" >> $GITHUB_OUTPUT
           
       - name: Cancel deployment if resources exist
         if: ${{ steps.check_resources.outputs.existing_resources == 'true' || steps.check_resources.outputs.terraform_deployed == 'true' }}
         run: |
-          # ... keep existing code (deployment cancellation logic)
+          echo "Resources already exist. Cancelling deployment."
+          exit 1
           
-      - name: Install dependencies
+      - name: Build Docker image
         if: ${{ steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
-        run: npm ci
-        
-      - name: Build application
-        if: ${{ steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
-        run: npm run build
+        run: |
+          docker build -t hr-portal-app:latest .
+          docker save hr-portal-app:latest > hr-portal-app.tar
         
       - name: Terraform Plan
         if: ${{ steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
@@ -71,25 +104,21 @@ jobs:
           cd terraform
           terraform apply -auto-approve -var="db_username=admin" -var="db_password=password123"
           
-      - name: Deploy application to EC2
+      - name: Deploy Docker container to EC2
         if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
         run: |
-          # Get the public IP of the EC2 instance from Terraform output
+          # Get the public IP of the EC2 instance
           cd terraform
           EC2_IP=$(terraform output -raw ec2_public_ip)
           API_URL=$(terraform output -raw api_gateway_url)
+          INSTANCE_ID=$(terraform state show aws_instance.hr_portal_ec2 | grep "id" | head -n 1 | awk -F= '{print $2}' | xargs)
           
-          # Package the application
-          cd ..
-          tar -czf app.tar.gz dist
-          
-          # Get the instance ID directly from Terraform state
-          INSTANCE_ID=$(cd terraform && terraform state show aws_instance.hr_portal_ec2 | grep "id" | head -n 1 | awk -F= '{print $2}' | xargs)
+          echo "EC2 IP: $EC2_IP"
           echo "Instance ID: $INSTANCE_ID"
           
-          # Wait for the instance to be ready - significantly increased wait time
+          # Wait for the instance to be ready - increased wait time
           echo "Waiting for instance to be fully initialized and ready for SSM commands..."
-          MAX_ATTEMPTS=40  # Increased from 30
+          MAX_ATTEMPTS=40
           for i in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $i/$MAX_ATTEMPTS: Checking if instance is ready..."
             
@@ -101,38 +130,6 @@ jobs:
               echo "Instance is not in running state. Waiting 30 seconds..."
               sleep 30
               continue
-            fi
-            
-            # Check EC2 instance status checks
-            STATUS_CHECKS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceStatus.Status" --output text || echo "initializing")
-            echo "Instance status checks: $STATUS_CHECKS"
-            
-            if [ "$STATUS_CHECKS" != "ok" ]; then
-              echo "Instance status checks not passed yet. Waiting 30 seconds..."
-              sleep 30
-              continue
-            fi
-            
-            # Attempt direct connectivity check using netcat if available
-            if command -v nc &> /dev/null; then
-              echo "Checking if port 80 is open on instance $EC2_IP..."
-              if nc -z -w5 $EC2_IP 80 2>/dev/null; then
-                echo "Port 80 is OPEN on instance $EC2_IP!"
-              else
-                echo "Port 80 is NOT OPEN on instance $EC2_IP. Waiting 30 seconds..."
-                sleep 30
-                continue
-              fi
-            else
-              # Fallback to a ping test if netcat is not available
-              echo "Checking if instance is reachable..."
-              if ping -c 1 $EC2_IP &> /dev/null; then
-                echo "Instance is reachable via ping"
-              else
-                echo "Instance is not reachable via ping. Waiting 30 seconds..."
-                sleep 30
-                continue
-              fi
             fi
             
             # Check SSM status
@@ -157,51 +154,45 @@ jobs:
           echo "Waiting an additional 2 minutes for instance services to fully start..."
           sleep 120
           
-          # Try a simple SSM command first to verify connectivity with extended timeout
+          # Test SSH connectivity with a simple command
           echo "Testing SSM connectivity with a simple command..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=['echo \"SSM test successful\"', 'yum list installed nginx || yum install -y nginx', 'systemctl status nginx || systemctl start nginx']" \
-            --comment "Testing SSM connectivity and ensuring Nginx is installed" || echo "Initial SSM test failed, but continuing deployment"
+            --parameters "commands=['echo \"SSM test successful\"', 'docker --version || amazon-linux-extras install -y docker', 'systemctl status docker || systemctl start docker']" \
+            --comment "Testing SSM connectivity and Docker installation" || echo "Initial SSM test failed, but continuing deployment"
           
-          # Wait a bit more to ensure the command had time to process
           sleep 15
           
-          # Verify Nginx is running using SSM
-          echo "Verifying Nginx status via SSM..."
+          # Transfer the Docker image to the EC2 instance
+          echo "Transferring Docker image to EC2 instance..."
+          aws s3 mb s3://hr-portal-docker-temp-$(date +%s) || echo "S3 bucket already exists"
+          BUCKET_NAME=$(aws s3 ls | grep hr-portal-docker-temp | tail -n 1 | awk '{print $3}')
+          aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
+          
+          # Deploy Docker container
+          echo "Deploying Docker container..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
             --parameters "commands=[
-              'echo \"Checking Nginx installation and status...\"',
-              'yum list installed | grep nginx || yum install -y nginx',
-              'systemctl status nginx || systemctl start nginx', 
-              'ss -tunlp | grep :80 || echo \"Port 80 not listening\"', 
-              'curl -s http://localhost || echo \"No response from localhost\"'
-            ]" \
-            --comment "Checking Nginx status" || echo "Nginx status check failed, but continuing deployment"
-          
-          sleep 15
-          
-          # Deploy web content regardless of SSM status
-          echo "Deploying application content..."
-          # Try to use SSM to deploy the application
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=[
-              'echo \"Starting deployment at $(date)\"',
-              'mkdir -p /var/www/html', 
-              'echo \"<!DOCTYPE html><html><head><title>HR Portal - GitHub Actions Deployment</title><style>body{font-family:Arial,sans-serif;margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;text-align:center;background-color:#f5f5f5;}h1{color:#4CAF50;}p{margin:20px 0;}</style></head><body><h1>HR Portal Deployment Success!</h1><p>Application deployed via GitHub Actions at $(date)</p></body></html>\" > /var/www/html/index.html', 
-              'chmod -R 755 /var/www/html', 
-              'chown -R nginx:nginx /var/www/html || echo \"Could not change ownership\"',
-              'systemctl restart nginx || (yum install -y nginx && systemctl start nginx)',
-              'systemctl status nginx',
-              'ss -tunlp | grep :80 || echo \"Port 80 not listening after deployment\"',
+              'echo \"Starting Docker deployment at $(date)\"',
+              'aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/',
+              'docker load -i /tmp/hr-portal-app.tar',
+              'docker stop hr-portal-container || true',
+              'docker rm hr-portal-container || true',
+              'docker run -d --name hr-portal-container -p 80:80 hr-portal-app:latest',
+              'echo \"Verifying Docker container is running...\"',
+              'docker ps',
+              'echo \"Testing web server...\"',
+              'curl -s http://localhost || echo \"Could not connect to web server\"',
               'echo \"Deployment completed at $(date)\"'
             ]" \
-            --comment "Deploy HR Portal application" || echo "SSM deployment command failed, but infrastructure is deployed"
+            --comment "Deploy HR Portal Docker container" || echo "SSM deployment command failed, but infrastructure is deployed"
+          
+          # Clean up S3 bucket
+          aws s3 rm s3://$BUCKET_NAME/hr-portal-app.tar
+          aws s3 rb s3://$BUCKET_NAME
           
           echo "Deployment process completed!"
           echo "EC2 Instance URL: http://$EC2_IP"

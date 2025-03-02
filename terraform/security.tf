@@ -1,4 +1,3 @@
-
 # Security Group for EC2
 resource "aws_security_group" "ec2_sg" {
   name        = "hr-portal-ec2-sg"
@@ -30,6 +29,15 @@ resource "aws_security_group" "ec2_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
     description = "HTTPS access"
+  }
+
+  # Allow access to Docker API (for Docker deployment)
+  ingress {
+    from_port   = 2375
+    to_port     = 2376
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Docker API access"
   }
 
   # Allow all outbound traffic
