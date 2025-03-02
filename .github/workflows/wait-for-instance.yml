@@ -1,0 +1,70 @@
+
+name: Wait for EC2 Instance
+
+on:
+  workflow_call:
+    inputs:
+      instance_id:
+        required: true
+        type: string
+
+jobs:
+  wait:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          
+      - name: Wait for instance to be ready
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping instance wait step."
+            exit 0
+          fi
+          
+          echo "Waiting for instance $INSTANCE_ID to be fully initialized..."
+          
+          # Wait for instance to be running
+          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+          
+          # Wait for SSM agent to be online
+          MAX_ATTEMPTS=20
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt $i/$MAX_ATTEMPTS: Checking SSM status..."
+            SSM_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[].PingStatus" --output text || echo "OFFLINE")
+            
+            if [ "$SSM_STATUS" == "Online" ]; then
+              echo "SSM agent is online!"
+              break
+            fi
+            
+            if [ $i -eq $MAX_ATTEMPTS ]; then
+              echo "Max attempts reached but instance is still not ready. Continuing anyway..."
+            fi
+            
+            echo "Instance not ready. Waiting 30 seconds..."
+            sleep 30
+          done
+          
+          # Additional wait for system services
+          echo "Waiting an additional minute for all services to start..."
+          sleep 60
+      
+      - name: Test instance connectivity
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          
+          echo "Testing instance with simple SSM command..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=['echo \"SSM test successful\"', 'docker --version || amazon-linux-extras install -y docker', 'systemctl status docker || systemctl start docker']" \
+            --comment "Testing SSM connectivity and Docker installation"
+            
+          sleep 15

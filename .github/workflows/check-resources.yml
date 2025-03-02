@@ -1,0 +1,87 @@
+
+name: Check AWS Resources
+
+on:
+  workflow_call:
+    outputs:
+      terraform_deployed:
+        description: "Whether Terraform resources are already deployed"
+        value: ${{ jobs.check.outputs.terraform_deployed }}
+      existing_resources:
+        description: "Whether AWS resources already exist"
+        value: ${{ jobs.check.outputs.existing_resources }}
+      ec2_ip:
+        description: "EC2 instance public IP"
+        value: ${{ jobs.check.outputs.ec2_ip }}
+      api_url:
+        description: "API Gateway URL"
+        value: ${{ jobs.check.outputs.api_url }}
+      alb_dns:
+        description: "ALB DNS name"
+        value: ${{ jobs.check.outputs.alb_dns }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      terraform_deployed: ${{ steps.check_terraform.outputs.terraform_deployed }}
+      existing_resources: ${{ steps.check_aws.outputs.existing_resources }}
+      ec2_ip: ${{ steps.check_aws.outputs.EC2_IP }}
+      api_url: ${{ steps.check_aws.outputs.API_URL }}
+      alb_dns: ${{ steps.check_aws.outputs.ALB_DNS }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init
+      
+      - name: Check Terraform state
+        id: check_terraform
+        run: |
+          cd terraform
+          if [ -f terraform.tfstate ]; then
+            echo "terraform_deployed=true" >> $GITHUB_OUTPUT
+          else
+            echo "terraform_deployed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check AWS resources
+        id: check_aws
+        run: |
+          # Check if EC2 instance exists
+          if aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region ${{ secrets.AWS_REGION }} | jq '.Reservations | length' | grep -q "[1-9]"; then
+            echo "existing_resources=true" >> $GITHUB_OUTPUT
+            
+            # Get EC2 IP
+            EC2_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region ${{ secrets.AWS_REGION }} | jq -r '.Reservations[0].Instances[0].PublicIpAddress')
+            echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
+            
+            # Get API Gateway URL
+            API_ID=$(aws apigateway get-rest-apis --region ${{ secrets.AWS_REGION }} | jq -r '.items[] | select(.name=="hr-portal-api") | .id')
+            if [ -n "$API_ID" ]; then
+              API_URL="https://$API_ID.execute-api.${{ secrets.AWS_REGION }}.amazonaws.com/prod"
+              echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+            fi
+            
+            # Get ALB DNS name
+            ALB_NAME=$(aws elbv2 describe-load-balancers --region ${{ secrets.AWS_REGION }} | jq -r '.LoadBalancers[] | select(.LoadBalancerName=="hr-portal-alb") | .DNSName')
+            if [ -n "$ALB_NAME" ]; then
+              echo "ALB_DNS=$ALB_NAME" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "existing_resources=false" >> $GITHUB_OUTPUT
+          fi

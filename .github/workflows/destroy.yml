@@ -10,9 +10,13 @@ on:
         type: string
 
 jobs:
+  check_resources:
+    uses: ./.github/workflows/check-resources.yml
+  
   destroy:
+    needs: check_resources
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.confirmation == 'destroy' }}
+    if: ${{ github.event.inputs.confirmation == 'destroy' && needs.check_resources.outputs.existing_resources == 'true' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -32,31 +36,11 @@ jobs:
           cd terraform
           terraform init
       
-      - name: Check if environment exists
-        id: check_environment
-        run: |
-          cd terraform
-          if terraform state list | grep -q "aws_instance.hr_portal_ec2"; then
-            echo "Environment exists and will be destroyed"
-            echo "environment_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "No environment found to destroy"
-            echo "environment_exists=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Cancel if no environment exists
-        if: ${{ steps.check_environment.outputs.environment_exists != 'true' }}
-        run: |
-          echo "No infrastructure found to destroy. Exiting."
-          exit 0
-      
       - name: Terraform Destroy
-        if: ${{ steps.check_environment.outputs.environment_exists == 'true' }}
         run: |
           cd terraform
           terraform destroy -auto-approve -var="db_username=admin" -var="db_password=password123"
           
       - name: Confirmation
-        if: ${{ steps.check_environment.outputs.environment_exists == 'true' }}
         run: |
           echo "All AWS resources have been successfully destroyed."
