@@ -52,6 +52,41 @@ jobs:
           echo "Uploading Docker image to S3..."
           aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
       
+      - name: Verify Docker Installation on EC2
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          
+          echo "Running thorough Docker installation verification..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=[
+              'echo \"===== CHECKING DOCKER INSTALLATION =====\" > /tmp/docker-verification.log',
+              'echo \"Command check:\" >> /tmp/docker-verification.log',
+              'command -v docker >> /tmp/docker-verification.log 2>&1 || echo \"Docker command not found\" >> /tmp/docker-verification.log',
+              'echo \"Package check:\" >> /tmp/docker-verification.log',
+              'yum list installed docker >> /tmp/docker-verification.log 2>&1 || echo \"Docker package not found\" >> /tmp/docker-verification.log',
+              'echo \"Version check:\" >> /tmp/docker-verification.log',
+              'docker --version >> /tmp/docker-verification.log 2>&1 || echo \"Docker version command failed\" >> /tmp/docker-verification.log',
+              'echo \"Service check:\" >> /tmp/docker-verification.log',
+              'systemctl status docker >> /tmp/docker-verification.log 2>&1 || echo \"Docker service not running\" >> /tmp/docker-verification.log',
+              'echo \"===== INSTALLING/REINSTALLING DOCKER IF NEEDED =====\" >> /tmp/docker-verification.log',
+              'amazon-linux-extras install -y docker >> /tmp/docker-verification.log 2>&1 || yum install -y docker >> /tmp/docker-verification.log 2>&1',
+              'systemctl enable docker >> /tmp/docker-verification.log 2>&1',
+              'systemctl restart docker >> /tmp/docker-verification.log 2>&1',
+              'echo \"===== FINAL VERIFICATION =====\" >> /tmp/docker-verification.log',
+              'docker --version >> /tmp/docker-verification.log 2>&1',
+              'systemctl status docker >> /tmp/docker-verification.log 2>&1',
+              'echo \"===== VERIFICATION COMPLETE =====\" >> /tmp/docker-verification.log',
+              'cat /tmp/docker-verification.log'
+            ]" \
+            --comment "Thorough Docker verification"
+          
+          # Wait for the verification to complete
+          echo "Waiting for Docker verification to complete..."
+          sleep 45
+      
       - name: Deploy application
         if: ${{ inputs.instance_id != 'unavailable' }}
         run: |
@@ -64,44 +99,54 @@ jobs:
             exit 0
           fi
           
-          # First, check if Docker is installed and running
-          echo "Verifying Docker on EC2 instance before deployment..."
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=[
-              'echo \"Checking Docker installation before deployment...\"',
-              'if ! command -v docker &> /dev/null; then',
-              '  echo \"Docker not found, installing...\"',
-              '  sudo amazon-linux-extras install -y docker || sudo yum install -y docker',
-              '  sudo systemctl enable docker',
-              '  sudo systemctl start docker',
-              'fi',
-              'docker --version',
-              'sudo systemctl status docker'
-            ]" \
-            --comment "Check Docker before deployment"
-          
-          # Wait for Docker check to complete
-          echo "Waiting for Docker check to complete..."
-          sleep 30
-          
           echo "Deploying Docker container to EC2..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
             --parameters "commands=[
-              'echo \"Starting Docker deployment at $(date)\"',
-              'aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/',
-              'sudo docker load -i /tmp/hr-portal-app.tar',
-              'sudo docker stop hr-portal-container || true',
-              'sudo docker rm hr-portal-container || true',
-              'sudo docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest',
-              'echo \"Docker container status:\"',
-              'sudo docker ps',
-              'curl -s http://localhost || echo \"Could not connect to web server\"'
+              'echo \"====== STARTING DEPLOYMENT $(date) ======\" > /tmp/deployment.log',
+              'echo \"Downloading Docker image from S3...\" >> /tmp/deployment.log',
+              'aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/ >> /tmp/deployment.log 2>&1',
+              'echo \"Loading Docker image...\" >> /tmp/deployment.log',
+              'sudo docker load -i /tmp/hr-portal-app.tar >> /tmp/deployment.log 2>&1',
+              'echo \"Removing existing container if any...\" >> /tmp/deployment.log',
+              'sudo docker stop hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to stop\" >> /tmp/deployment.log',
+              'sudo docker rm hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to remove\" >> /tmp/deployment.log',
+              'echo \"Running new container...\" >> /tmp/deployment.log',
+              'sudo docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest >> /tmp/deployment.log 2>&1',
+              'echo \"Verifying container is running...\" >> /tmp/deployment.log',
+              'sudo docker ps >> /tmp/deployment.log 2>&1',
+              'echo \"Container logs:\" >> /tmp/deployment.log',
+              'sudo docker logs hr-portal-container >> /tmp/deployment.log 2>&1',
+              'echo \"Testing web server:\" >> /tmp/deployment.log',
+              'curl -s http://localhost >> /tmp/deployment.log 2>&1 || echo \"Could not connect to web server\" >> /tmp/deployment.log',
+              'echo \"====== DEPLOYMENT COMPLETED $(date) ======\" >> /tmp/deployment.log',
+              'cat /tmp/deployment.log'
             ]" \
             --comment "Deploy HR Portal Docker container"
+        
+      - name: Verify Deployment
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          EC2_IP=${{ inputs.ec2_ip }}
+          
+          echo "Waiting 30 seconds for container to fully initialize..."
+          sleep 30
+          
+          echo "Verifying deployment..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=[
+              'echo \"Container status:\"',
+              'sudo docker ps',
+              'echo \"Container logs:\"',
+              'sudo docker logs hr-portal-container 2>&1 || echo \"No logs available\"',
+              'echo \"Web server response:\"',
+              'curl -s -o /dev/null -w \"%{http_code}\" http://localhost || echo \"Failed to connect\"'
+            ]" \
+            --comment "Verify HR Portal container deployment"
             
       - name: Clean up S3 bucket
         if: ${{ always() && inputs.instance_id != 'unavailable' }}

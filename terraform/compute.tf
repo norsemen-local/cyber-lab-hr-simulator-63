@@ -56,6 +56,14 @@ resource "aws_instance" "hr_portal_ec2" {
     # Add ec2-user to docker group
     usermod -aG docker ec2-user
     
+    # Install AWS CLI for S3 access
+    echo "Installing AWS CLI..."
+    yum install -y aws-cli
+    
+    # Install additional development tools
+    echo "Installing development tools..."
+    yum groupinstall -y "Development Tools"
+    
     # Install and configure SSM Agent
     echo "Installing and configuring SSM Agent..."
     yum install -y amazon-ssm-agent || echo "SSM agent installation failed, may already be installed"
@@ -114,10 +122,15 @@ resource "aws_instance" "hr_portal_ec2" {
     echo "Creating health check file..."
     echo "Instance initialized at $(date)" > /var/www/html/health.txt
     
+    # Verify Docker installation again and create test container to ensure Docker works
+    echo "Creating a test Docker container to verify Docker works..."
+    docker run --rm hello-world || echo "Docker test container failed to run!"
+    
     # Create a Docker test file to verify Docker is working
     echo "Creating Docker test file..."
     echo "Docker status: $(docker --version 2>&1)" > /var/www/html/docker-status.txt
     echo "Service status: $(systemctl status docker 2>&1)" >> /var/www/html/docker-status.txt
+    echo "Test container: $(docker run --rm hello-world 2>&1)" >> /var/www/html/docker-status.txt
     
     # Create a file to indicate script completion
     echo "User data script execution completed successfully at $(date)!" > /tmp/user-data-complete.txt
