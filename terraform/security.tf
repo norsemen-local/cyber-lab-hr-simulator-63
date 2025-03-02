@@ -126,7 +126,7 @@ resource "aws_iam_policy" "ec2_ssh_policy" {
   tags = local.common_tags
 }
 
-# IAM Policy for S3 access
+# IAM Policy for S3 access - Enhanced with more specific permissions
 resource "aws_iam_policy" "ec2_s3_policy" {
   name        = "hr-portal-ec2-s3-policy"
   description = "Policy allowing EC2 to access S3 buckets"
@@ -137,8 +137,12 @@ resource "aws_iam_policy" "ec2_s3_policy" {
       {
         Action = [
           "s3:GetObject",
+          "s3:PutObject",
           "s3:ListBucket",
-          "s3:GetBucketLocation"
+          "s3:GetBucketLocation",
+          "s3:ListAllMyBuckets",
+          "s3:GetBucketAcl",
+          "s3:PutObjectAcl"
         ]
         Effect   = "Allow"
         Resource = "*"

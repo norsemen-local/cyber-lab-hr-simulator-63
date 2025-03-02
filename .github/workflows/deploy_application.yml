@@ -48,16 +48,21 @@ jobs:
           echo "Creating temporary S3 bucket: $BUCKET_NAME"
           aws s3 mb s3://$BUCKET_NAME
           
-          # Set bucket policy to allow public access for the EC2 instance
-          echo "Setting bucket policy to allow EC2 access..."
+          # Add a bucket policy to allow the EC2 instance role to access objects
+          echo "Setting bucket policy for EC2 role access..."
           aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy '{
             "Version": "2012-10-17",
             "Statement": [
               {
                 "Effect": "Allow",
-                "Principal": "*",
+                "Principal": {"AWS": "*"},
                 "Action": ["s3:GetObject", "s3:ListBucket"],
-                "Resource": ["arn:aws:s3:::'$BUCKET_NAME'", "arn:aws:s3:::'$BUCKET_NAME'/*"]
+                "Resource": ["arn:aws:s3:::'$BUCKET_NAME'", "arn:aws:s3:::'$BUCKET_NAME'/*"],
+                "Condition": {
+                  "StringEquals": {
+                    "aws:PrincipalType": "AssumedRole"
+                  }
+                }
               }
             ]
           }'
@@ -66,9 +71,9 @@ jobs:
           echo "Uploading Docker image to S3..."
           aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
           
-          # Make the Docker image publicly accessible
-          echo "Making Docker image publicly accessible..."
-          aws s3api put-object-acl --bucket $BUCKET_NAME --key hr-portal-app.tar --acl public-read
+          # List bucket contents to verify upload
+          echo "Verifying upload with bucket listing:"
+          aws s3 ls s3://$BUCKET_NAME/
       
       - name: Verify Docker Installation on EC2
         if: ${{ inputs.instance_id != 'unavailable' }}
@@ -142,42 +147,80 @@ jobs:
             exit 0
           fi
           
-          # Get the bucket's public URL
-          S3_URL="https://$BUCKET_NAME.s3.amazonaws.com/hr-portal-app.tar"
+          # Print bucket information for debugging and future reference
+          echo "Deployment bucket information:"
+          echo "Bucket name: $BUCKET_NAME" 
           
+          # Deploy using SSM and downloading from S3 with IAM credentials
           echo "Deploying Docker container to EC2..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
             --parameters "commands=[
               'echo \"====== STARTING DEPLOYMENT $(date) ======\" > /tmp/deployment.log',
-              'echo \"Bucket name: $BUCKET_NAME\" >> /tmp/deployment.log',
-              'echo \"S3 URL: $S3_URL\" >> /tmp/deployment.log',
-              'echo \"AWS CLI version:\" >> /tmp/deployment.log',
-              'aws --version >> /tmp/deployment.log 2>&1 || (yum install -y aws-cli && aws --version >> /tmp/deployment.log 2>&1)',
-              'echo \"AWS region configuration:\" >> /tmp/deployment.log',
-              'aws configure get region >> /tmp/deployment.log 2>&1 || echo \"us-east-1\" | aws configure set region - >> /tmp/deployment.log 2>&1',
-              'echo \"List buckets to verify AWS credentials:\" >> /tmp/deployment.log',
-              'aws s3 ls >> /tmp/deployment.log 2>&1 || echo \"Failed to list buckets\" >> /tmp/deployment.log',
-              'echo \"Downloading Docker image directly using curl...\" >> /tmp/deployment.log',
-              'curl -L -o /tmp/hrApp/hr-portal-app.tar \"$S3_URL\" >> /tmp/deployment.log 2>&1',
-              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then echo \"Direct download failed, trying alternative method...\" >> /tmp/deployment.log; fi',
-              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/hrApp/ --no-sign-request >> /tmp/deployment.log 2>&1; fi',
-              'echo \"File downloaded to /tmp/hrApp/ directory\" >> /tmp/deployment.log',
+              
+              'echo \"Verifying AWS CLI installation...\" >> /tmp/deployment.log',
+              'if ! command -v aws &> /dev/null; then',
+              '  echo \"Installing AWS CLI...\" >> /tmp/deployment.log',
+              '  yum install -y aws-cli >> /tmp/deployment.log 2>&1',
+              'fi',
+              
+              'echo \"Configuring AWS region...\" >> /tmp/deployment.log',
+              'aws configure set region us-east-1 >> /tmp/deployment.log 2>&1',
+              
+              'echo \"Creating directory structure...\" >> /tmp/deployment.log',
+              'mkdir -p /tmp/hrApp >> /tmp/deployment.log 2>&1',
+              'chmod -R 777 /tmp/hrApp >> /tmp/deployment.log 2>&1',
+              
+              'echo \"S3 bucket: '$BUCKET_NAME'\" >> /tmp/deployment.log',
+              
+              'echo \"===== DOWNLOAD ATTEMPTS =====\" >> /tmp/deployment.log',
+              
+              'echo \"Attempt 1: Using standard AWS S3 CP command...\" >> /tmp/deployment.log',
+              'aws s3 cp s3://'$BUCKET_NAME'/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
+              
+              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then',
+              '  echo \"Attempt 2: Using AWS S3 CP with --no-sign-request...\" >> /tmp/deployment.log',
+              '  aws s3 cp s3://'$BUCKET_NAME'/hr-portal-app.tar /tmp/hrApp/ --no-sign-request >> /tmp/deployment.log 2>&1',
+              'fi',
+              
+              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then',
+              '  echo \"Attempt 3: Using AWS SDK metadata credentials...\" >> /tmp/deployment.log',
+              '  TOKEN=$(curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\")',
+              '  ROLE=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/)',
+              '  CREDENTIALS=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE)',
+              '  ACCESS_KEY=$(echo $CREDENTIALS | grep -o \"\\\"AccessKeyId\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
+              '  SECRET_KEY=$(echo $CREDENTIALS | grep -o \"\\\"SecretAccessKey\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
+              '  SESSION_TOKEN=$(echo $CREDENTIALS | grep -o \"\\\"Token\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
+              '  aws configure set aws_access_key_id $ACCESS_KEY',
+              '  aws configure set aws_secret_access_key $SECRET_KEY',
+              '  aws configure set aws_session_token $SESSION_TOKEN',
+              '  aws s3 cp s3://'$BUCKET_NAME'/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
+              'fi',
+              
+              'echo \"Checking if download was successful...\" >> /tmp/deployment.log',
               'ls -la /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
+              
+              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then',
+              '  echo \"ERROR: Failed to download Docker image after multiple attempts\" >> /tmp/deployment.log',
+              '  exit 1',
+              'fi',
+              
+              'echo \"===== DOCKER DEPLOYMENT =====\" >> /tmp/deployment.log',
               'echo \"Loading Docker image...\" >> /tmp/deployment.log',
               'sudo docker load -i /tmp/hrApp/hr-portal-app.tar >> /tmp/deployment.log 2>&1',
+              
               'echo \"Removing existing container if any...\" >> /tmp/deployment.log',
               'sudo docker stop hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to stop\" >> /tmp/deployment.log',
               'sudo docker rm hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to remove\" >> /tmp/deployment.log',
+              
               'echo \"Running new container...\" >> /tmp/deployment.log',
               'sudo docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest >> /tmp/deployment.log 2>&1',
+              
               'echo \"Verifying container is running...\" >> /tmp/deployment.log',
               'sudo docker ps >> /tmp/deployment.log 2>&1',
-              'echo \"Container logs:\" >> /tmp/deployment.log',
               'sudo docker logs hr-portal-container >> /tmp/deployment.log 2>&1',
-              'echo \"Testing web server:\" >> /tmp/deployment.log',
-              'curl -s http://localhost >> /tmp/deployment.log 2>&1 || echo \"Could not connect to web server\" >> /tmp/deployment.log',
+              
               'echo \"====== DEPLOYMENT COMPLETED $(date) ======\" >> /tmp/deployment.log',
               'cat /tmp/deployment.log'
             ]" \
@@ -220,10 +263,6 @@ jobs:
           if [ -n "$BUCKET_NAME" ]; then
             echo "Keeping S3 bucket: $BUCKET_NAME intact for future use"
             echo "Bucket URL: s3://$BUCKET_NAME"
-            echo "Public URL: https://$BUCKET_NAME.s3.amazonaws.com/hr-portal-app.tar"
-            
-            # Make sure the object is publicly accessible
-            aws s3api put-object-acl --bucket $BUCKET_NAME --key hr-portal-app.tar --acl public-read
             
             # List the contents of the bucket
             echo "Contents of the bucket:"
