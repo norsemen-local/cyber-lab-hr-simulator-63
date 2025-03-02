@@ -67,10 +67,10 @@ jobs:
           fi
           
           # Wait additional time for services to start
-          echo "Waiting an additional minute for all services to start..."
-          sleep 60
+          echo "Waiting an additional 2 minutes for all services to start..."
+          sleep 120
       
-      - name: Test instance connectivity
+      - name: Test instance connectivity and Docker installation
         if: ${{ inputs.instance_id != 'unavailable' }}
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
@@ -80,11 +80,40 @@ jobs:
             exit 0
           fi
           
-          echo "Testing instance with simple SSM command..."
+          echo "Testing instance with SSM command..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=['echo \"SSM test successful\"', 'docker --version || amazon-linux-extras install -y docker', 'systemctl status docker || systemctl start docker']" \
+            --parameters "commands=[
+              'echo \"SSM test successful\"',
+              'echo \"Checking Docker installation...\"',
+              'if ! command -v docker &> /dev/null; then',
+              '  echo \"Docker not found, installing...\"',
+              '  sudo amazon-linux-extras install -y docker || sudo yum install -y docker',
+              '  sudo systemctl enable docker',
+              '  sudo systemctl start docker',
+              'fi',
+              'docker --version',
+              'sudo systemctl status docker',
+              'echo \"Docker status: $?\"'
+            ]" \
             --comment "Testing SSM connectivity and Docker installation"
             
           sleep 15
+          
+          # Verify Docker is running with an additional check
+          echo "Verifying Docker is properly installed and running..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=[
+              'echo \"Running final Docker verification...\"',
+              'docker --version || echo \"Docker is not installed properly\"',
+              'sudo systemctl status docker || echo \"Docker service is not running properly\"',
+              'sudo systemctl restart docker || echo \"Failed to restart Docker\"',
+              'echo \"Docker verification complete\"'
+            ]" \
+            --comment "Final Docker verification"
+            
+          sleep 15
+

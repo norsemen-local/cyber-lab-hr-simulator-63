@@ -19,11 +19,22 @@ resource "aws_instance" "hr_portal_ec2" {
     echo "Updating system packages..."
     yum update -y
     
-    # Install Docker
+    # Install Docker - with more robust error handling
     echo "Installing Docker..."
-    amazon-linux-extras install -y docker
+    amazon-linux-extras install -y docker || {
+      echo "Failed to install Docker using amazon-linux-extras, trying alternative method..."
+      yum install -y docker
+    }
+    
+    # Make sure Docker service is enabled and started
+    echo "Enabling and starting Docker service..."
     systemctl enable docker
     systemctl start docker
+    
+    # Verify Docker is installed and running
+    echo "Verifying Docker installation..."
+    docker --version || echo "Docker installation failed!"
+    systemctl status docker || echo "Docker service is not running!"
     
     # Add ec2-user to docker group
     usermod -aG docker ec2-user
@@ -85,6 +96,11 @@ resource "aws_instance" "hr_portal_ec2" {
     # Create a healthcheck file that can be used to verify the instance is ready
     echo "Creating health check file..."
     echo "Instance initialized at $(date)" > /var/www/html/health.txt
+    
+    # Create a Docker test file to verify Docker is working
+    echo "Creating Docker test file..."
+    echo "Docker status: $(docker --version 2>&1)" > /var/www/html/docker-status.txt
+    echo "Service status: $(systemctl status docker 2>&1)" >> /var/www/html/docker-status.txt
     
     echo "User data script execution completed successfully at $(date)!"
   EOF

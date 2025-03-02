@@ -64,6 +64,28 @@ jobs:
             exit 0
           fi
           
+          # First, check if Docker is installed and running
+          echo "Verifying Docker on EC2 instance before deployment..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=[
+              'echo \"Checking Docker installation before deployment...\"',
+              'if ! command -v docker &> /dev/null; then',
+              '  echo \"Docker not found, installing...\"',
+              '  sudo amazon-linux-extras install -y docker || sudo yum install -y docker',
+              '  sudo systemctl enable docker',
+              '  sudo systemctl start docker',
+              'fi',
+              'docker --version',
+              'sudo systemctl status docker'
+            ]" \
+            --comment "Check Docker before deployment"
+          
+          # Wait for Docker check to complete
+          echo "Waiting for Docker check to complete..."
+          sleep 30
+          
           echo "Deploying Docker container to EC2..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
@@ -71,12 +93,12 @@ jobs:
             --parameters "commands=[
               'echo \"Starting Docker deployment at $(date)\"',
               'aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/',
-              'docker load -i /tmp/hr-portal-app.tar',
-              'docker stop hr-portal-container || true',
-              'docker rm hr-portal-container || true',
-              'docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest',
+              'sudo docker load -i /tmp/hr-portal-app.tar',
+              'sudo docker stop hr-portal-container || true',
+              'sudo docker rm hr-portal-container || true',
+              'sudo docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest',
               'echo \"Docker container status:\"',
-              'docker ps',
+              'sudo docker ps',
               'curl -s http://localhost || echo \"Could not connect to web server\"'
             ]" \
             --comment "Deploy HR Portal Docker container"
