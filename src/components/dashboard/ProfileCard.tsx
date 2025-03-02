@@ -24,7 +24,7 @@ const ProfileCard = ({ user }: ProfileCardProps) => {
             <span className="font-medium">Name:</span> {user.name}
           </p>
           <p className="text-sm">
-            <span className="font-medium">Username:</span> {user.username}
+            <span className="font-medium">Email:</span> {user.email}
           </p>
           <p className="text-sm">
             <span className="font-medium">Role:</span> {user.role}
