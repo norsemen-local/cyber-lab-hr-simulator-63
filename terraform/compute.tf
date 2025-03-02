@@ -25,6 +25,9 @@ resource "aws_instance" "hr_portal_ec2" {
     systemctl enable docker
     systemctl start docker
     
+    # Add ec2-user to docker group
+    usermod -aG docker ec2-user
+    
     # Install and configure SSM Agent
     echo "Installing and configuring SSM Agent..."
     yum install -y amazon-ssm-agent

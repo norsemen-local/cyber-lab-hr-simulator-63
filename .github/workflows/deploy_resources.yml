@@ -1,3 +1,4 @@
+
 name: HR Portal - Deploy Resources
 on:
   workflow_call:
@@ -59,11 +60,6 @@ jobs:
         run: |
           cd terraform
           terraform init
-          
-      - name: Build Docker image
-        run: |
-          docker build -t hr-portal-app:latest .
-          docker save hr-portal-app:latest > hr-portal-app.tar
         
       - name: Terraform Plan
         run: |
@@ -175,18 +171,35 @@ jobs:
             
           sleep 15
       
+      - name: Build Docker image
+        if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
+        run: |
+          # Build the Docker image locally in the GitHub Actions runner
+          echo "Building Docker image..."
+          docker build -t hr-portal-app:latest .
+          docker save hr-portal-app:latest > hr-portal-app.tar
+          
+          # Create temporary S3 bucket with unique name 
+          BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
+          echo "Creating temporary S3 bucket: $BUCKET_NAME"
+          aws s3 mb s3://$BUCKET_NAME
+          
+          # Upload Docker image to S3
+          echo "Uploading Docker image to S3..."
+          aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
+      
       - name: Deploy application
         if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
         run: |
           INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
           EC2_IP=${{ steps.terraform_outputs.outputs.EC2_IP }}
+          BUCKET_NAME="hr-portal-docker-temp-$(date +%s -d '1 minute ago')"
+          
           if [ "$INSTANCE_ID" == "unavailable" ]; then
             echo "Instance ID not available. Skipping deployment."
             exit 0
           fi
-          BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
-          aws s3 mb s3://$BUCKET_NAME
-          aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
+          
           echo "Deploying Docker container to EC2..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
@@ -203,5 +216,8 @@ jobs:
               'curl -s http://localhost || echo \"Could not connect to web server\"'
             ]" \
             --comment "Deploy HR Portal Docker container"
+            
+          # Clean up S3 bucket
+          echo "Cleaning up S3 bucket..."
           aws s3 rm s3://$BUCKET_NAME/hr-portal-app.tar
           aws s3 rb s3://$BUCKET_NAME
