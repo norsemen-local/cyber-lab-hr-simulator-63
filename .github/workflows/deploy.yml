@@ -1,4 +1,5 @@
-name: Deploy to AWS
+
+name: HR Portal AWS Deployment
 on:
   push:
     branches: [ main ]
@@ -11,14 +12,82 @@ on:
         type: choice
         options:
           - deploy
+          - destroy
+      confirmation:
+        description: 'Type "destroy" to confirm deletion of all resources'
+        required: false
+        type: string
 
 jobs:
   check_resources:
-    uses: ./.github/workflows/check-resources.yml
+    runs-on: ubuntu-latest
+    outputs:
+      terraform_deployed: ${{ steps.check_terraform.outputs.terraform_deployed }}
+      existing_resources: ${{ steps.check_aws.outputs.existing_resources }}
+      ec2_ip: ${{ steps.check_aws.outputs.EC2_IP }}
+      api_url: ${{ steps.check_aws.outputs.API_URL }}
+      alb_dns: ${{ steps.check_aws.outputs.ALB_DNS }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init
+      
+      - name: Check Terraform state
+        id: check_terraform
+        run: |
+          cd terraform
+          if [ -f terraform.tfstate ]; then
+            echo "terraform_deployed=true" >> $GITHUB_OUTPUT
+          else
+            echo "terraform_deployed=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Check AWS resources
+        id: check_aws
+        run: |
+          EC2_EXISTS=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region us-east-1 | jq '.Reservations | length')
+          if [ "$EC2_EXISTS" -gt 0 ]; then
+            echo "existing_resources=true" >> $GITHUB_OUTPUT
+            EC2_IP=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --region us-east-1 | jq -r '.Reservations[0].Instances[0].PublicIpAddress // "unavailable"')
+            echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
+            API_ID=$(aws apigateway get-rest-apis --region us-east-1 | jq -r '.items[] | select(.name=="hr-portal-api") | .id // ""')
+            if [ -n "$API_ID" ]; then
+              API_URL="https://$API_ID.execute-api.us-east-1.amazonaws.com/prod"
+              echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+            else
+              echo "API_URL=unavailable" >> $GITHUB_OUTPUT
+            fi
+            ALB_NAME=$(aws elbv2 describe-load-balancers --region us-east-1 | jq -r '.LoadBalancers[] | select(.LoadBalancerName=="hr-portal-alb") | .DNSName // ""')
+            if [ -n "$ALB_NAME" ]; then
+              echo "ALB_DNS=$ALB_NAME" >> $GITHUB_OUTPUT
+            else
+              echo "ALB_DNS=unavailable" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "existing_resources=false" >> $GITHUB_OUTPUT
+            echo "EC2_IP=unavailable" >> $GITHUB_OUTPUT
+            echo "API_URL=unavailable" >> $GITHUB_OUTPUT
+            echo "ALB_DNS=unavailable" >> $GITHUB_OUTPUT
+          fi
   
   deploy:
     needs: check_resources
-    if: ${{ needs.check_resources.outputs.terraform_deployed == 'false' && needs.check_resources.outputs.existing_resources == 'false' }}
+    if: ${{ (github.event.inputs.action != 'destroy') && needs.check_resources.outputs.terraform_deployed == 'false' && needs.check_resources.outputs.existing_resources == 'false' }}
     runs-on: ubuntu-latest
     outputs:
       ec2_ip: ${{ steps.terraform_outputs.outputs.EC2_IP }}
@@ -82,20 +151,127 @@ jobs:
       
       - name: Wait for instance
         if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
-        uses: ./.github/workflows/wait-for-instance.yml
-        with:
-          instance_id: ${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
+        run: |
+          INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
+          
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping instance wait step."
+            exit 0
+          fi
+          
+          echo "Waiting for instance $INSTANCE_ID to be fully initialized..."
+          
+          # Wait for instance to be running
+          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+          
+          # Wait for SSM agent to be online
+          MAX_ATTEMPTS=20
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt $i/$MAX_ATTEMPTS: Checking SSM status..."
+            SSM_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[].PingStatus" --output text || echo "OFFLINE")
+            
+            if [ "$SSM_STATUS" == "Online" ]; then
+              echo "SSM agent is online!"
+              break
+            fi
+            
+            if [ $i -eq $MAX_ATTEMPTS ]; then
+              echo "Max attempts reached but instance is still not ready. Continuing anyway..."
+            fi
+            
+            echo "Instance not ready. Waiting 30 seconds..."
+            sleep 30
+          done
+          
+          # Additional wait for system services
+          echo "Waiting an additional minute for all services to start..."
+          sleep 60
+      
+      - name: Test instance connectivity
+        if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
+          
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping connectivity test."
+            exit 0
+          fi
+          
+          echo "Testing instance with simple SSM command..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=['echo \"SSM test successful\"', 'docker --version || amazon-linux-extras install -y docker', 'systemctl status docker || systemctl start docker']" \
+            --comment "Testing SSM connectivity and Docker installation"
+            
+          sleep 15
       
       - name: Deploy application
         if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
-        uses: ./.github/workflows/deploy-application.yml
+        run: |
+          INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
+          EC2_IP=${{ steps.terraform_outputs.outputs.EC2_IP }}
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping deployment."
+            exit 0
+          fi
+          BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
+          aws s3 mb s3://$BUCKET_NAME
+          aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
+          echo "Deploying Docker container to EC2..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=[
+              'echo \"Starting Docker deployment at $(date)\"',
+              'aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/',
+              'docker load -i /tmp/hr-portal-app.tar',
+              'docker stop hr-portal-container || true',
+              'docker rm hr-portal-container || true',
+              'docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest',
+              'echo \"Docker container status:\"',
+              'docker ps',
+              'curl -s http://localhost || echo \"Could not connect to web server\"'
+            ]" \
+            --comment "Deploy HR Portal Docker container"
+          aws s3 rm s3://$BUCKET_NAME/hr-portal-app.tar
+          aws s3 rb s3://$BUCKET_NAME
+  
+  destroy:
+    needs: check_resources
+    if: ${{ github.event.inputs.action == 'destroy' && github.event.inputs.confirmation == 'destroy' && needs.check_resources.outputs.existing_resources == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          instance_id: ${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
-          ec2_ip: ${{ steps.terraform_outputs.outputs.EC2_IP }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        
+      - name: Terraform Init
+        run: |
+          cd terraform
+          terraform init
+      
+      - name: Terraform Destroy
+        run: |
+          cd terraform
+          terraform destroy -auto-approve -var="db_username=admin" -var="db_password=password123"
+          
+      - name: Confirmation
+        run: |
+          echo "All AWS resources have been successfully destroyed."
   
   display_urls:
-    needs: [check_resources, deploy]
-    if: always()
+    needs: [check_resources, deploy, destroy]
+    if: always() && github.event.inputs.action != 'destroy'
     runs-on: ubuntu-latest
     steps:
       - name: Display deployment URLs
@@ -110,3 +286,4 @@ jobs:
             echo "EC2 Instance URL: http://${{ needs.deploy.outputs.ec2_ip || 'unavailable' }}"
             echo "ALB URL: http://${{ needs.deploy.outputs.alb_dns || 'unavailable' }}"
             echo "API Gateway URL: ${{ needs.deploy.outputs.api_url || 'unavailable' }}"
+          fi
