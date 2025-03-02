@@ -3,7 +3,7 @@
 resource "aws_instance" "hr_portal_ec2" {
   ami                    = var.ec2_ami_id
   instance_type          = "t3.micro"
-  key_name               = var.key_pair_name
+  # Removing the key_name property
   subnet_id              = aws_subnet.public_subnet.id
   vpc_security_group_ids = [aws_security_group.ec2_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name

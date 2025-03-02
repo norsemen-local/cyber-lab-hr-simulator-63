@@ -11,11 +11,7 @@ variable "ec2_ami_id" {
   default     = "ami-0277155c3f0ab2930" # Updated to a valid Amazon Linux 2 AMI in us-east-1
 }
 
-variable "key_pair_name" {
-  description = "Name of the key pair to use for SSH access"
-  type        = string
-  default     = "hr-portal-key"
-}
+# Removing the key_pair_name variable as it's not needed
 
 variable "db_username" {
   description = "Username for the RDS instance"

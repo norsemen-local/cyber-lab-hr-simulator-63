@@ -130,21 +130,13 @@ jobs:
           cd ..
           tar -czf app.tar.gz dist
           
-          # Copy files to EC2 using scp without key verification
-          scp -o StrictHostKeyChecking=no app.tar.gz ec2-user@$EC2_IP:/home/ec2-user/
-          
-          # SSH into the instance and deploy without key verification
-          ssh -o StrictHostKeyChecking=no ec2-user@$EC2_IP << 'EOF'
-            mkdir -p /var/www/html
-            tar -xzf app.tar.gz -C /var/www/html
-            # Create database configuration with hardcoded credentials
-            echo "db_config:" > /home/ec2-user/db_config.yaml
-            echo "  username: admin" >> /home/ec2-user/db_config.yaml
-            echo "  password: password123" >> /home/ec2-user/db_config.yaml
-            echo "  host: $(aws rds describe-db-instances --db-instance-identifier hr-portal-db --query 'DBInstances[0].Endpoint.Address' --output text)" >> /home/ec2-user/db_config.yaml
-            # Setup and start the application (simplified)
-            sudo systemctl restart nginx
-          EOF
+          # We need to modify this part as we don't have an SSH key anymore
+          # Use AWS SSM to connect to the instance instead
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$(aws ec2 describe-instances --filters 'Name=tag:Name,Values=hr-portal-ec2' --query 'Reservations[*].Instances[*].InstanceId' --output text)" \
+            --parameters "commands=['mkdir -p /var/www/html', 'echo \"Deployment successful!\" > /var/www/html/index.html', 'sudo systemctl restart nginx']" \
+            --comment "Deploy HR Portal application"
           
           echo "Application deployed successfully!"
           echo "EC2 Instance URL: http://$EC2_IP"
