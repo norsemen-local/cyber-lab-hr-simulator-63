@@ -11,16 +11,16 @@ on:
     outputs:
       ec2_ip:
         description: "EC2 instance public IP"
-        value: ${{ jobs.deploy.outputs.ec2_ip }}
+        value: ${{ jobs.deploy_infrastructure.outputs.ec2_ip }}
       api_url:
         description: "API Gateway URL"
-        value: ${{ jobs.deploy.outputs.api_url }}
+        value: ${{ jobs.deploy_infrastructure.outputs.api_url }}
       alb_dns:
         description: "ALB DNS name"
-        value: ${{ jobs.deploy.outputs.alb_dns }}
+        value: ${{ jobs.deploy_infrastructure.outputs.alb_dns }}
       instance_id:
         description: "EC2 instance ID"
-        value: ${{ jobs.deploy.outputs.instance_id }}
+        value: ${{ jobs.deploy_infrastructure.outputs.instance_id }}
     secrets:
       AWS_ACCESS_KEY_ID:
         required: true
@@ -28,196 +28,26 @@ on:
         required: true
 
 jobs:
-  deploy:
+  deploy_infrastructure:
     if: ${{ inputs.action != 'destroy' }}
-    runs-on: ubuntu-latest
-    outputs:
-      ec2_ip: ${{ steps.terraform_outputs.outputs.EC2_IP }}
-      api_url: ${{ steps.terraform_outputs.outputs.API_URL }}
-      alb_dns: ${{ steps.terraform_outputs.outputs.ALB_DNS }}
-      instance_id: ${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-          
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        
-      - name: Terraform Init
-        run: |
-          cd terraform
-          terraform init
-        
-      - name: Terraform Plan
-        run: |
-          cd terraform
-          terraform plan -var="db_username=admin" -var="db_password=password123"
-        
-      - name: Terraform Apply
-        if: ${{ github.ref == 'refs/heads/main' }}
-        run: |
-          cd terraform
-          terraform apply -auto-approve -var="db_username=admin" -var="db_password=password123"
-          
-      - name: Get infrastructure outputs
-        if: ${{ github.ref == 'refs/heads/main' }}
-        id: terraform_outputs
-        run: |
-          cd terraform
-          
-          # Extract values directly from raw output and clean them
-          EC2_OUTPUT=$(terraform output -raw ec2_public_ip || echo "unavailable")
-          EC2_IP=$(echo "$EC2_OUTPUT" | grep -o '^[0-9.]*' || echo "unavailable")
-          
-          ALB_OUTPUT=$(terraform output -raw alb_dns_name || echo "unavailable")
-          ALB_DNS=$(echo "$ALB_OUTPUT" | grep -o '^[a-zA-Z0-9.-]*' || echo "unavailable")
-          
-          API_OUTPUT=$(terraform output -raw api_gateway_url || echo "unavailable")
-          API_URL=$(echo "$API_OUTPUT" | grep -o '^https://[a-zA-Z0-9./-]*' || echo "unavailable")
-          
-          INSTANCE_OUTPUT=$(terraform output -raw instance_id || echo "unavailable")
-          INSTANCE_ID=$(echo "$INSTANCE_OUTPUT" | grep -o '^i-[a-z0-9]*' || echo "unavailable")
-          
-          # If extraction failed, attempt to get instance ID from AWS CLI
-          if [ "$INSTANCE_ID" == "unavailable" ]; then
-            INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --query "Reservations[0].Instances[0].InstanceId" --output text || echo "unavailable")
-            INSTANCE_ID=$(echo "$INSTANCE_ID" | grep -o '^i-[a-z0-9]*' || echo "unavailable")
-          fi
-          
-          echo "EC2_IP=${EC2_IP}" >> $GITHUB_OUTPUT
-          echo "API_URL=${API_URL}" >> $GITHUB_OUTPUT
-          echo "ALB_DNS=${ALB_DNS}" >> $GITHUB_OUTPUT
-          echo "INSTANCE_ID=${INSTANCE_ID}" >> $GITHUB_OUTPUT
-          
-          echo "EC2 IP: ${EC2_IP}"
-          echo "ALB DNS: ${ALB_DNS}"
-          echo "API URL: ${API_URL}"
-          echo "Instance ID: ${INSTANCE_ID}"
-      
-      - name: Wait for instance
-        if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
-        run: |
-          INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
-          
-          if [ "$INSTANCE_ID" == "unavailable" ]; then
-            echo "Instance ID not available. Skipping instance wait step."
-            exit 0
-          fi
-          
-          echo "Waiting for instance $INSTANCE_ID to be fully initialized..."
-          
-          # Set a reasonable timeout
-          timeout=600  # 10 minutes
-          interval=15  # 15 seconds
-          elapsed=0
-          
-          # Wait for instance to be running
-          echo "Checking if instance is running..."
-          while [ $elapsed -lt $timeout ]; do
-            STATUS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].State.Name' --output text || echo "unknown")
-            echo "Instance status: $STATUS"
-            
-            if [ "$STATUS" == "running" ]; then
-              echo "Instance is running!"
-              break
-            elif [ "$STATUS" == "terminated" ] || [ "$STATUS" == "shutting-down" ]; then
-              echo "Instance is in a terminal state: $STATUS"
-              echo "Continuing workflow but deployment may fail"
-              break
-            fi
-            
-            sleep $interval
-            elapsed=$((elapsed + interval))
-            echo "Waited for $elapsed seconds..."
-          done
-          
-          if [ $elapsed -ge $timeout ]; then
-            echo "Timeout waiting for instance to be running, but continuing workflow"
-          fi
-          
-          # Wait additional time for services to start
-          echo "Waiting an additional minute for all services to start..."
-          sleep 60
-      
-      - name: Test instance connectivity
-        if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
-        run: |
-          INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
-          
-          if [ "$INSTANCE_ID" == "unavailable" ]; then
-            echo "Instance ID not available. Skipping connectivity test."
-            exit 0
-          fi
-          
-          echo "Testing instance with simple SSM command..."
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=['echo \"SSM test successful\"', 'docker --version || amazon-linux-extras install -y docker', 'systemctl status docker || systemctl start docker']" \
-            --comment "Testing SSM connectivity and Docker installation"
-            
-          sleep 15
-      
-      - name: Build Docker image
-        if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
-        run: |
-          # Build the Docker image locally in the GitHub Actions runner
-          echo "Building Docker image..."
-          docker build -t hr-portal-app:latest .
-          docker save hr-portal-app:latest > hr-portal-app.tar
-          
-          # Create temporary S3 bucket with unique name 
-          BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
-          echo "Creating temporary S3 bucket: $BUCKET_NAME"
-          aws s3 mb s3://$BUCKET_NAME
-          
-          # Upload Docker image to S3
-          echo "Uploading Docker image to S3..."
-          aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
-      
-      - name: Deploy application
-        if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
-        run: |
-          INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
-          EC2_IP=${{ steps.terraform_outputs.outputs.EC2_IP }}
-          BUCKET_NAME="hr-portal-docker-temp-$(date +%s -d '1 minute ago')"
-          
-          if [ "$INSTANCE_ID" == "unavailable" ]; then
-            echo "Instance ID not available. Skipping deployment."
-            exit 0
-          fi
-          
-          echo "Deploying Docker container to EC2..."
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=[
-              'echo \"Starting Docker deployment at $(date)\"',
-              'aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/',
-              'docker load -i /tmp/hr-portal-app.tar',
-              'docker stop hr-portal-container || true',
-              'docker rm hr-portal-container || true',
-              'docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest',
-              'echo \"Docker container status:\"',
-              'docker ps',
-              'curl -s http://localhost || echo \"Could not connect to web server\"'
-            ]" \
-            --comment "Deploy HR Portal Docker container"
-            
-          # Clean up S3 bucket
-          echo "Cleaning up S3 bucket..."
-          aws s3 rm s3://$BUCKET_NAME/hr-portal-app.tar
-          aws s3 rb s3://$BUCKET_NAME
+    uses: ./.github/workflows/deploy_infrastructure.yml
+    with:
+      action: ${{ inputs.action }}
+    secrets: inherit
+  
+  wait_for_instance:
+    needs: deploy_infrastructure
+    if: ${{ inputs.action != 'destroy' && needs.deploy_infrastructure.outputs.instance_id != 'unavailable' }}
+    uses: ./.github/workflows/wait_for_instance.yml
+    with:
+      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
+    secrets: inherit
+  
+  deploy_application:
+    needs: [deploy_infrastructure, wait_for_instance]
+    if: ${{ inputs.action != 'destroy' && needs.deploy_infrastructure.outputs.instance_id != 'unavailable' }}
+    uses: ./.github/workflows/deploy_application.yml
+    with:
+      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
+      ec2_ip: ${{ needs.deploy_infrastructure.outputs.ec2_ip }}
+    secrets: inherit

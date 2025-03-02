@@ -1,0 +1,90 @@
+
+name: HR Portal - Wait for Instance
+on:
+  workflow_call:
+    inputs:
+      instance_id:
+        description: 'EC2 instance ID'
+        type: string
+        required: true
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+jobs:
+  wait_for_instance:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Wait for instance
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping instance wait step."
+            exit 0
+          fi
+          
+          echo "Waiting for instance $INSTANCE_ID to be fully initialized..."
+          
+          # Set a reasonable timeout
+          timeout=600  # 10 minutes
+          interval=15  # 15 seconds
+          elapsed=0
+          
+          # Wait for instance to be running
+          echo "Checking if instance is running..."
+          while [ $elapsed -lt $timeout ]; do
+            STATUS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].State.Name' --output text || echo "unknown")
+            echo "Instance status: $STATUS"
+            
+            if [ "$STATUS" == "running" ]; then
+              echo "Instance is running!"
+              break
+            elif [ "$STATUS" == "terminated" ] || [ "$STATUS" == "shutting-down" ]; then
+              echo "Instance is in a terminal state: $STATUS"
+              echo "Continuing workflow but deployment may fail"
+              break
+            fi
+            
+            sleep $interval
+            elapsed=$((elapsed + interval))
+            echo "Waited for $elapsed seconds..."
+          done
+          
+          if [ $elapsed -ge $timeout ]; then
+            echo "Timeout waiting for instance to be running, but continuing workflow"
+          fi
+          
+          # Wait additional time for services to start
+          echo "Waiting an additional minute for all services to start..."
+          sleep 60
+      
+      - name: Test instance connectivity
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping connectivity test."
+            exit 0
+          fi
+          
+          echo "Testing instance with simple SSM command..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=['echo \"SSM test successful\"', 'docker --version || amazon-linux-extras install -y docker', 'systemctl status docker || systemctl start docker']" \
+            --comment "Testing SSM connectivity and Docker installation"
+            
+          sleep 15
