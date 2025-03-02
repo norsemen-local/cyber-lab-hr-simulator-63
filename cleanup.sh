@@ -164,7 +164,7 @@ delete_vpcs() {
             if [[ $? -ne 0 ]]; then
                 log "❌ ERROR: Failed to delete Route Table '$ROUTE_TABLE_ID': $DELETE_RESULT"
             else
-                echo "✅ Route Table deleted successfully."
+                log "✅ Route Table deleted successfully."
             fi
 
             # Finally, delete VPC
