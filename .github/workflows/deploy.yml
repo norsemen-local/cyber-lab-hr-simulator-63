@@ -87,10 +87,11 @@ jobs:
           INSTANCE_ID=$(cd terraform && terraform state show aws_instance.hr_portal_ec2 | grep "id" | head -n 1 | awk -F= '{print $2}' | xargs)
           echo "Instance ID: $INSTANCE_ID"
           
-          # Wait longer for the instance to be fully initialized
-          echo "Waiting for instance to be ready for SSM commands..."
-          for i in {1..20}; do
-            echo "Attempt $i/20: Checking if instance is ready..."
+          # Wait for the instance to be ready - significantly increased wait time
+          echo "Waiting for instance to be fully initialized and ready for SSM commands..."
+          MAX_ATTEMPTS=30
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "Attempt $i/$MAX_ATTEMPTS: Checking if instance is ready..."
             
             # Check instance state
             INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].State.Name" --output text || echo "unknown")
@@ -98,6 +99,26 @@ jobs:
             
             if [ "$INSTANCE_STATE" != "running" ]; then
               echo "Instance is not in running state. Waiting 30 seconds..."
+              sleep 30
+              continue
+            fi
+            
+            # Check EC2 instance status checks
+            STATUS_CHECKS=$(aws ec2 describe-instance-status --instance-ids $INSTANCE_ID --query "InstanceStatuses[0].InstanceStatus.Status" --output text || echo "initializing")
+            echo "Instance status checks: $STATUS_CHECKS"
+            
+            if [ "$STATUS_CHECKS" != "ok" ]; then
+              echo "Instance status checks not passed yet. Waiting 30 seconds..."
+              sleep 30
+              continue
+            fi
+            
+            # Check if port 80 is open (requires netcat)
+            echo "Checking if port 80 is open on instance $EC2_IP..."
+            if nc -z -w5 $EC2_IP 80 2>/dev/null; then
+              echo "Port 80 is OPEN on instance $EC2_IP!"
+            else
+              echo "Port 80 is NOT OPEN on instance $EC2_IP. Waiting 30 seconds..."
               sleep 30
               continue
             fi
@@ -113,9 +134,14 @@ jobs:
             
             echo "Instance is not yet available via SSM. Waiting 30 seconds..."
             sleep 30
+            
+            # If we've reached the last attempt and still not ready, continue anyway
+            if [ $i -eq $MAX_ATTEMPTS ]; then
+              echo "Max attempts reached but instance is still not fully ready. Proceeding anyway..."
+            fi
           done
           
-          # Try a simple SSM command first to verify connectivity
+          # Try a simple SSM command first to verify connectivity with extended timeout
           echo "Testing SSM connectivity with a simple command..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
@@ -124,7 +150,17 @@ jobs:
             --comment "Testing SSM connectivity" || echo "Initial SSM test failed, but continuing deployment"
           
           # Wait a bit more to ensure the command had time to process
-          sleep 10
+          sleep 15
+          
+          # Verify Nginx is running using SSM
+          echo "Verifying Nginx status via SSM..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=['systemctl status nginx', 'ss -tunlp | grep :80', 'curl -s http://localhost']" \
+            --comment "Checking Nginx status" || echo "Nginx status check failed, but continuing deployment"
+          
+          sleep 15
           
           # Deploy web content regardless of SSM status
           echo "Deploying application content..."
@@ -132,8 +168,18 @@ jobs:
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=['mkdir -p /var/www/html', 'echo \"<html><body><h1>HR Portal Deployment Success!</h1><p>Application deployed via GitHub Actions.</p></body></html>\" > /var/www/html/index.html', 'chmod -R 755 /var/www/html', 'sudo systemctl restart nginx']" \
-            --comment "Deploy HR Portal application" || echo "SSM deployment command failed. The instance may need more time to initialize."
+            --parameters "commands=[
+              'echo \"Starting deployment at $(date)\"',
+              'mkdir -p /var/www/html', 
+              'echo \"<!DOCTYPE html><html><head><title>HR Portal - GitHub Actions Deployment</title><style>body{font-family:Arial,sans-serif;margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;text-align:center;background-color:#f5f5f5;}h1{color:#4CAF50;}p{margin:20px 0;}</style></head><body><h1>HR Portal Deployment Success!</h1><p>Application deployed via GitHub Actions at $(date)</p></body></html>\" > /var/www/html/index.html', 
+              'chmod -R 755 /var/www/html', 
+              'chown -R nginx:nginx /var/www/html || true',
+              'systemctl restart nginx',
+              'systemctl status nginx',
+              'ss -tunlp | grep :80',
+              'echo \"Deployment completed at $(date)\"'
+            ]" \
+            --comment "Deploy HR Portal application" || echo "SSM deployment command failed, but infrastructure is deployed"
           
           echo "Deployment process completed!"
           echo "EC2 Instance URL: http://$EC2_IP"
