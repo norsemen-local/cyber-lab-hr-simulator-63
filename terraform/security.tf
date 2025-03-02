@@ -13,22 +13,22 @@ resource "aws_security_group" "ec2_sg" {
     description = "SSH access"
   }
 
-  # Allow HTTP access
+  # Allow HTTP access from ALB
   ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTP access"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+    description     = "HTTP access from ALB"
   }
 
-  # Allow HTTPS access
+  # Allow HTTPS access from ALB
   ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTPS access"
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+    description     = "HTTPS access from ALB"
   }
 
   # Allow access to Docker API (for Docker deployment)

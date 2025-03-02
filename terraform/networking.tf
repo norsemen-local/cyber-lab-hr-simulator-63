@@ -22,6 +22,18 @@ resource "aws_subnet" "public_subnet" {
   })
 }
 
+# Second Public Subnet for ALB (in a different AZ)
+resource "aws_subnet" "public_subnet_2" {
+  vpc_id                  = aws_vpc.hr_portal_vpc.id
+  cidr_block              = "10.0.4.0/24"
+  map_public_ip_on_launch = true
+  availability_zone       = "${var.aws_region}b"
+
+  tags = merge(local.common_tags, {
+    Name = "hr-portal-public-subnet-2"
+  })
+}
+
 # Private Subnet for RDS
 resource "aws_subnet" "private_subnet_1" {
   vpc_id            = aws_vpc.hr_portal_vpc.id
@@ -70,5 +82,11 @@ resource "aws_route_table" "public_route_table" {
 # Associate Public Subnet with Route Table
 resource "aws_route_table_association" "public_subnet_association" {
   subnet_id      = aws_subnet.public_subnet.id
+  route_table_id = aws_route_table.public_route_table.id
+}
+
+# Associate Second Public Subnet with Route Table
+resource "aws_route_table_association" "public_subnet_2_association" {
+  subnet_id      = aws_subnet.public_subnet_2.id
   route_table_id = aws_route_table.public_route_table.id
 }

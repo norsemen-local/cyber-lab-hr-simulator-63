@@ -1,4 +1,3 @@
-
 name: Deploy to AWS
 
 on:
@@ -66,6 +65,12 @@ jobs:
               API_URL="https://$API_ID.execute-api.${{ secrets.AWS_REGION }}.amazonaws.com/prod"
               echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
             fi
+            
+            # Get ALB DNS name
+            ALB_NAME=$(aws elbv2 describe-load-balancers --region ${{ secrets.AWS_REGION }} | jq -r '.LoadBalancers[] | select(.LoadBalancerName=="hr-portal-alb") | .DNSName')
+            if [ -n "$ALB_NAME" ]; then
+              echo "ALB_DNS=$ALB_NAME" >> $GITHUB_OUTPUT
+            fi
           else
             echo "existing_resources=false" >> $GITHUB_OUTPUT
           fi
@@ -101,10 +106,12 @@ jobs:
           cd terraform
           EC2_IP=$(terraform output -raw ec2_public_ip)
           API_URL=$(terraform output -raw api_gateway_url)
+          ALB_DNS=$(terraform output -raw alb_dns_name)
           INSTANCE_ID=$(terraform state show aws_instance.hr_portal_ec2 | grep "id" | head -n 1 | awk -F= '{print $2}' | xargs)
           
           echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
           echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
+          echo "ALB_DNS=$ALB_DNS" >> $GITHUB_OUTPUT
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_OUTPUT
           
       - name: Wait for instance to be ready
@@ -189,11 +196,13 @@ jobs:
           
           echo "Deployment completed!"
           echo "Application URL: http://$EC2_IP"
-          echo "API Gateway URL: ${{ steps.terraform_outputs.outputs.API_URL }}"
+          echo "ALB URL: http://${{ steps.terraform_outputs.outputs.ALB_DNS || 'unavailable' }}"
+          echo "API Gateway URL: ${{ steps.terraform_outputs.outputs.API_URL || 'unavailable' }}"
       
       - name: Display URLs for existing deployment
         if: ${{ steps.check_resources.outputs.terraform_deployed == 'true' }}
         run: |
           echo "Application is already deployed!"
           echo "EC2 Instance URL: http://${{ steps.check_resources.outputs.EC2_IP || 'unavailable' }}"
+          echo "ALB URL: http://${{ steps.check_resources.outputs.ALB_DNS || 'unavailable' }}"
           echo "API Gateway URL: ${{ steps.check_resources.outputs.API_URL || 'unavailable' }}"
