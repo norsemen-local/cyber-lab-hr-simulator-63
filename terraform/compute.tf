@@ -22,6 +22,7 @@ resource "aws_instance" "hr_portal_ec2" {
     
     # Create application directory
     mkdir -p /tmp/hrApp
+    chmod -R 777 /tmp/hrApp
     echo "Created hrApp directory at $(date)" > /tmp/hrApp/created.txt
     
     # Update system packages

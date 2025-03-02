@@ -48,32 +48,17 @@ jobs:
           echo "Creating temporary S3 bucket: $BUCKET_NAME"
           aws s3 mb s3://$BUCKET_NAME
           
-          # Add a bucket policy to allow the EC2 instance role to access objects
-          echo "Setting bucket policy for EC2 role access..."
-          aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy '{
-            "Version": "2012-10-17",
-            "Statement": [
-              {
-                "Effect": "Allow",
-                "Principal": {"AWS": "*"},
-                "Action": ["s3:GetObject", "s3:ListBucket"],
-                "Resource": ["arn:aws:s3:::'$BUCKET_NAME'", "arn:aws:s3:::'$BUCKET_NAME'/*"],
-                "Condition": {
-                  "StringEquals": {
-                    "aws:PrincipalType": "AssumedRole"
-                  }
-                }
-              }
-            ]
-          }'
-          
-          # Upload Docker image to S3
+          # Upload Docker image to S3 without setting public ACLs
           echo "Uploading Docker image to S3..."
           aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
           
           # List bucket contents to verify upload
           echo "Verifying upload with bucket listing:"
           aws s3 ls s3://$BUCKET_NAME/
+          
+          # Get the object URL for later use
+          S3_URL="s3://$BUCKET_NAME/hr-portal-app.tar"
+          echo "S3_URL=$S3_URL" >> $GITHUB_ENV
       
       - name: Verify Docker Installation on EC2
         if: ${{ inputs.instance_id != 'unavailable' }}
@@ -108,50 +93,52 @@ jobs:
           
           # Wait for the verification to complete
           echo "Waiting for Docker verification to complete..."
-          sleep 45
+          sleep 30
       
-      - name: Create hrApp directory
+      - name: Create and prepare hrApp directory
         if: ${{ inputs.instance_id != 'unavailable' }}
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
           
-          echo "Ensuring /tmp/hrApp directory exists with proper permissions..."
+          echo "Creating and preparing /tmp/hrApp directory with proper permissions..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
             --parameters "commands=[
+              'echo \"===== PREPARING DIRECTORY =====\" > /tmp/dir-preparation.log',
               'mkdir -p /tmp/hrApp',
-              'echo \"Created/verified hrApp directory at $(date)\" > /tmp/hrApp/directory-check.txt',
-              'ls -la /tmp/hrApp',
               'chmod -R 777 /tmp/hrApp',
-              'echo \"Directory permissions after chmod:\"',
-              'ls -la /tmp/hrApp',
-              'echo \"Current user and groups:\"',
-              'id',
-              'echo \"AWS CLI version:\"',
-              'aws --version || yum install -y aws-cli'
+              'echo \"Directory created at $(date)\" >> /tmp/dir-preparation.log',
+              'echo \"Directory permissions:\" >> /tmp/dir-preparation.log',
+              'ls -la /tmp | grep hrApp >> /tmp/dir-preparation.log',
+              'echo \"Current user: $(whoami)\" >> /tmp/dir-preparation.log',
+              'echo \"AWS CLI version:\" >> /tmp/dir-preparation.log',
+              'aws --version >> /tmp/dir-preparation.log 2>&1 || echo \"AWS CLI not installed\" >> /tmp/dir-preparation.log',
+              'if ! command -v aws &> /dev/null; then',
+              '  echo \"Installing AWS CLI...\" >> /tmp/dir-preparation.log',
+              '  yum install -y aws-cli >> /tmp/dir-preparation.log 2>&1',
+              'fi',
+              'echo \"===== DIRECTORY PREPARATION COMPLETE =====\" >> /tmp/dir-preparation.log',
+              'cat /tmp/dir-preparation.log'
             ]" \
-            --comment "Ensure hrApp directory exists with proper permissions"
+            --comment "Prepare hrApp directory"
           
-          sleep 15
+          echo "Waiting for directory preparation to complete..."
+          sleep 20
       
       - name: Deploy application
         if: ${{ inputs.instance_id != 'unavailable' }}
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
-          EC2_IP=${{ inputs.ec2_ip }}
           BUCKET_NAME=${{ env.BUCKET_NAME }}
+          S3_URL=${{ env.S3_URL }}
           
           if [ "$INSTANCE_ID" == "unavailable" ]; then
             echo "Instance ID not available. Skipping deployment."
             exit 0
           fi
           
-          # Print bucket information for debugging and future reference
-          echo "Deployment bucket information:"
-          echo "Bucket name: $BUCKET_NAME" 
-          
-          # Deploy using SSM and downloading from S3 with IAM credentials
+          # Deploy using SSM with multiple download methods
           echo "Deploying Docker container to EC2..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
@@ -159,7 +146,10 @@ jobs:
             --parameters "commands=[
               'echo \"====== STARTING DEPLOYMENT $(date) ======\" > /tmp/deployment.log',
               
-              'echo \"Verifying AWS CLI installation...\" >> /tmp/deployment.log',
+              'echo \"Bucket name: $BUCKET_NAME\" >> /tmp/deployment.log',
+              'echo \"S3 URL: $S3_URL\" >> /tmp/deployment.log',
+              
+              'echo \"===== CONFIGURING AWS =====\" >> /tmp/deployment.log',
               'if ! command -v aws &> /dev/null; then',
               '  echo \"Installing AWS CLI...\" >> /tmp/deployment.log',
               '  yum install -y aws-cli >> /tmp/deployment.log 2>&1',
@@ -168,26 +158,18 @@ jobs:
               'echo \"Configuring AWS region...\" >> /tmp/deployment.log',
               'aws configure set region us-east-1 >> /tmp/deployment.log 2>&1',
               
-              'echo \"Creating directory structure...\" >> /tmp/deployment.log',
-              'mkdir -p /tmp/hrApp >> /tmp/deployment.log 2>&1',
-              'chmod -R 777 /tmp/hrApp >> /tmp/deployment.log 2>&1',
-              
-              'echo \"S3 bucket: '$BUCKET_NAME'\" >> /tmp/deployment.log',
+              'echo \"Verifying AWS credentials...\" >> /tmp/deployment.log',
+              'aws sts get-caller-identity >> /tmp/deployment.log 2>&1 || echo \"Failed to get caller identity\" >> /tmp/deployment.log',
               
               'echo \"===== DOWNLOAD ATTEMPTS =====\" >> /tmp/deployment.log',
-              
-              'echo \"Attempt 1: Using standard AWS S3 CP command...\" >> /tmp/deployment.log',
+              'echo \"Attempt 1: Using instance profile credentials...\" >> /tmp/deployment.log',
               'aws s3 cp s3://'$BUCKET_NAME'/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
               
               'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then',
-              '  echo \"Attempt 2: Using AWS S3 CP with --no-sign-request...\" >> /tmp/deployment.log',
-              '  aws s3 cp s3://'$BUCKET_NAME'/hr-portal-app.tar /tmp/hrApp/ --no-sign-request >> /tmp/deployment.log 2>&1',
-              'fi',
-              
-              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then',
-              '  echo \"Attempt 3: Using AWS SDK metadata credentials...\" >> /tmp/deployment.log',
+              '  echo \"Attempt 2: Using AWS SDK metadata credentials...\" >> /tmp/deployment.log',
               '  TOKEN=$(curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\")',
               '  ROLE=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/)',
+              '  echo \"Found IAM role: $ROLE\" >> /tmp/deployment.log',
               '  CREDENTIALS=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE)',
               '  ACCESS_KEY=$(echo $CREDENTIALS | grep -o \"\\\"AccessKeyId\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
               '  SECRET_KEY=$(echo $CREDENTIALS | grep -o \"\\\"SecretAccessKey\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
@@ -203,6 +185,22 @@ jobs:
               
               'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then',
               '  echo \"ERROR: Failed to download Docker image after multiple attempts\" >> /tmp/deployment.log',
+              '  echo \"Attempting direct download via curl...\" >> /tmp/deployment.log',
+              '  TOKEN=$(curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\")',
+              '  ROLE=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/)',
+              '  CREDENTIALS=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE)',
+              '  ACCESS_KEY=$(echo $CREDENTIALS | grep -o \"\\\"AccessKeyId\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
+              '  SECRET_KEY=$(echo $CREDENTIALS | grep -o \"\\\"SecretAccessKey\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
+              '  SESSION_TOKEN=$(echo $CREDENTIALS | grep -o \"\\\"Token\\\" : \\\"[^\\\"]*\" | cut -d\\\"\\\' -f4)',
+              '  echo \"Using presigned URL as last resort...\" >> /tmp/deployment.log',
+              '  TIMESTAMP=$(date +%s)',
+              '  PRESIGNED_URL=$(AWS_ACCESS_KEY_ID=$ACCESS_KEY AWS_SECRET_ACCESS_KEY=$SECRET_KEY AWS_SESSION_TOKEN=$SESSION_TOKEN aws s3 presign s3://'$BUCKET_NAME'/hr-portal-app.tar --expires-in 3600)',
+              '  echo \"Generated presigned URL\" >> /tmp/deployment.log',
+              '  curl -s -o /tmp/hrApp/hr-portal-app.tar \"$PRESIGNED_URL\" >> /tmp/deployment.log 2>&1',
+              'fi',
+              
+              'if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then',
+              '  echo \"CRITICAL ERROR: All download attempts failed\" >> /tmp/deployment.log',
               '  exit 1',
               'fi',
               
@@ -240,6 +238,7 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
             --parameters "commands=[
+              'echo \"===== DEPLOYMENT VERIFICATION =====\"',
               'echo \"Container status:\"',
               'sudo docker ps',
               'echo \"Container logs:\"',
@@ -251,7 +250,8 @@ jobs:
               'echo \"Docker images:\"',
               'sudo docker images',
               'echo \"System disk space:\"',
-              'df -h'
+              'df -h',
+              'echo \"===== VERIFICATION COMPLETE =====\"'
             ]" \
             --comment "Verify HR Portal container deployment"
             
@@ -267,6 +267,11 @@ jobs:
             # List the contents of the bucket
             echo "Contents of the bucket:"
             aws s3 ls "s3://$BUCKET_NAME/"
+            
+            # Create a presigned URL for the object
+            echo "Creating a presigned URL for direct access:"
+            PRESIGNED_URL=$(aws s3 presign "s3://$BUCKET_NAME/hr-portal-app.tar" --expires-in 86400)
+            echo "Presigned URL (valid for 24 hours): $PRESIGNED_URL"
           else
             echo "Bucket name not available"
           fi

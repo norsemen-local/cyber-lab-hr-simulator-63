@@ -1,4 +1,3 @@
-
 # Security Group for EC2
 resource "aws_security_group" "ec2_sg" {
   name        = "hr-portal-ec2-sg"
@@ -30,15 +29,6 @@ resource "aws_security_group" "ec2_sg" {
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
     description     = "HTTPS access from ALB"
-  }
-
-  # Allow access to Docker API (for Docker deployment)
-  ingress {
-    from_port   = 2375
-    to_port     = 2376
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Docker API access"
   }
 
   # Allow all outbound traffic
@@ -126,7 +116,7 @@ resource "aws_iam_policy" "ec2_ssh_policy" {
   tags = local.common_tags
 }
 
-# IAM Policy for S3 access - Enhanced with more specific permissions
+# IAM Policy for S3 access - Enhanced with more specific permissions and bucket creation/policy
 resource "aws_iam_policy" "ec2_s3_policy" {
   name        = "hr-portal-ec2-s3-policy"
   description = "Policy allowing EC2 to access S3 buckets"
@@ -142,7 +132,10 @@ resource "aws_iam_policy" "ec2_s3_policy" {
           "s3:GetBucketLocation",
           "s3:ListAllMyBuckets",
           "s3:GetBucketAcl",
-          "s3:PutObjectAcl"
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:PutBucketPolicy",
+          "s3:DeleteObject"
         ]
         Effect   = "Allow"
         Resource = "*"
