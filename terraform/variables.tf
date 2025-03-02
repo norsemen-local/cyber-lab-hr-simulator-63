@@ -8,7 +8,7 @@ variable "aws_region" {
 variable "ec2_ami_id" {
   description = "AMI ID for EC2 instance (Amazon Linux 2)"
   type        = string
-  default     = "ami-0c55b159cbfafe1f0"
+  default     = "ami-0277155c3f0ab2930" # Updated to a valid Amazon Linux 2 AMI in us-east-1
 }
 
 variable "key_pair_name" {
