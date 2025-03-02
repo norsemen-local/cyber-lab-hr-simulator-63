@@ -87,6 +87,25 @@ jobs:
           echo "Waiting for Docker verification to complete..."
           sleep 45
       
+      - name: Create hrApp directory
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          
+          echo "Ensuring /tmp/hrApp directory exists..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "commands=[
+              'mkdir -p /tmp/hrApp',
+              'echo \"Created/verified hrApp directory at $(date)\" > /tmp/hrApp/directory-check.txt',
+              'ls -la /tmp/hrApp',
+              'chmod 777 /tmp/hrApp'
+            ]" \
+            --comment "Ensure hrApp directory exists"
+          
+          sleep 10
+      
       - name: Deploy application
         if: ${{ inputs.instance_id != 'unavailable' }}
         run: |
@@ -106,9 +125,11 @@ jobs:
             --parameters "commands=[
               'echo \"====== STARTING DEPLOYMENT $(date) ======\" > /tmp/deployment.log',
               'echo \"Downloading Docker image from S3...\" >> /tmp/deployment.log',
-              'aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/ >> /tmp/deployment.log 2>&1',
+              'aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
+              'echo \"File downloaded to /tmp/hrApp/ directory\" >> /tmp/deployment.log',
+              'ls -la /tmp/hrApp/ >> /tmp/deployment.log 2>&1',
               'echo \"Loading Docker image...\" >> /tmp/deployment.log',
-              'sudo docker load -i /tmp/hr-portal-app.tar >> /tmp/deployment.log 2>&1',
+              'sudo docker load -i /tmp/hrApp/hr-portal-app.tar >> /tmp/deployment.log 2>&1',
               'echo \"Removing existing container if any...\" >> /tmp/deployment.log',
               'sudo docker stop hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to stop\" >> /tmp/deployment.log',
               'sudo docker rm hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to remove\" >> /tmp/deployment.log',
@@ -144,28 +165,24 @@ jobs:
               'echo \"Container logs:\"',
               'sudo docker logs hr-portal-container 2>&1 || echo \"No logs available\"',
               'echo \"Web server response:\"',
-              'curl -s -o /dev/null -w \"%{http_code}\" http://localhost || echo \"Failed to connect\"'
+              'curl -s -o /dev/null -w \"%{http_code}\" http://localhost || echo \"Failed to connect\"',
+              'echo \"Files in /tmp/hrApp:\"',
+              'ls -la /tmp/hrApp/'
             ]" \
             --comment "Verify HR Portal container deployment"
             
-      - name: Clean up S3 bucket
+      - name: Leave S3 bucket intact
         if: ${{ always() && inputs.instance_id != 'unavailable' }}
         run: |
           BUCKET_NAME=${{ env.BUCKET_NAME }}
           
           if [ -n "$BUCKET_NAME" ]; then
-            echo "Cleaning up S3 bucket: $BUCKET_NAME"
+            echo "Keeping S3 bucket: $BUCKET_NAME intact for future use"
+            echo "Bucket URL: s3://$BUCKET_NAME"
             
-            # Check if bucket exists before attempting to delete objects
-            if aws s3 ls "s3://$BUCKET_NAME" >/dev/null 2>&1; then
-              echo "Removing objects from bucket..."
-              aws s3 rm "s3://$BUCKET_NAME/hr-portal-app.tar" --quiet || echo "Object already removed or doesn't exist"
-              
-              echo "Deleting bucket..."
-              aws s3 rb "s3://$BUCKET_NAME" --force || echo "Bucket deletion failed, might be already removed"
-            else
-              echo "Bucket $BUCKET_NAME doesn't exist, skipping cleanup"
-            fi
+            # List the contents of the bucket
+            echo "Contents of the bucket:"
+            aws s3 ls "s3://$BUCKET_NAME/"
           else
-            echo "Bucket name not available, skipping cleanup"
+            echo "Bucket name not available"
           fi
