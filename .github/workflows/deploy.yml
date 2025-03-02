@@ -27,14 +27,6 @@ jobs:
         with:
           node-version: '18'
           
-      - name: Install dependencies
-        if: ${{ github.event.inputs.action != 'destroy' }}
-        run: npm ci
-        
-      - name: Build application
-        if: ${{ github.event.inputs.action != 'destroy' }}
-        run: npm run build
-        
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -49,15 +41,47 @@ jobs:
         run: |
           cd terraform
           terraform init
+      
+      - name: Check if environment is already deployed
+        id: check_deployment
+        run: |
+          cd terraform
+          # Try to get the EC2 instance IP - if this works, environment exists
+          if terraform output -raw ec2_public_ip 2>/dev/null; then
+            echo "Environment is already deployed"
+            echo "already_deployed=true" >> $GITHUB_OUTPUT
+            echo "EC2_IP=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
+            echo "API_URL=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+          else
+            echo "Environment is not yet deployed"
+            echo "already_deployed=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Cancel deployment if already exists
+        if: ${{ steps.check_deployment.outputs.already_deployed == 'true' && github.event.inputs.action != 'destroy' }}
+        run: |
+          echo "Infrastructure is already deployed."
+          echo "EC2 Instance URL: http://${{ steps.check_deployment.outputs.EC2_IP }}"
+          echo "API Gateway URL: ${{ steps.check_deployment.outputs.API_URL }}"
+          echo "To destroy the infrastructure, run this workflow with the 'destroy' action."
+          exit 0
+          
+      - name: Install dependencies
+        if: ${{ github.event.inputs.action != 'destroy' && steps.check_deployment.outputs.already_deployed != 'true' }}
+        run: npm ci
+        
+      - name: Build application
+        if: ${{ github.event.inputs.action != 'destroy' && steps.check_deployment.outputs.already_deployed != 'true' }}
+        run: npm run build
         
       - name: Terraform Plan
-        if: ${{ github.event.inputs.action != 'destroy' }}
+        if: ${{ github.event.inputs.action != 'destroy' && steps.check_deployment.outputs.already_deployed != 'true' }}
         run: |
           cd terraform
           terraform plan -var="db_username=admin" -var="db_password=password123"
         
       - name: Terraform Apply
-        if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.action != 'destroy' }}
+        if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.action != 'destroy' && steps.check_deployment.outputs.already_deployed != 'true' }}
         run: |
           cd terraform
           terraform apply -auto-approve -var="db_username=admin" -var="db_password=password123"
@@ -69,11 +93,12 @@ jobs:
           terraform destroy -auto-approve -var="db_username=admin" -var="db_password=password123"
           
       - name: Deploy application to EC2
-        if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.action != 'destroy' }}
+        if: ${{ github.ref == 'refs/heads/main' && github.event.inputs.action != 'destroy' && steps.check_deployment.outputs.already_deployed != 'true' }}
         run: |
           # Get the public IP of the EC2 instance from Terraform output
           cd terraform
           EC2_IP=$(terraform output -raw ec2_public_ip)
+          API_URL=$(terraform output -raw api_gateway_url)
           
           # Package the application
           cd ..
@@ -94,3 +119,14 @@ jobs:
             # Setup and start the application (simplified)
             sudo systemctl restart nginx
           EOF
+          
+          echo "Application deployed successfully!"
+          echo "EC2 Instance URL: http://$EC2_IP"
+          echo "API Gateway URL: $API_URL"
+      
+      - name: Display URLs for existing deployment
+        if: ${{ steps.check_deployment.outputs.already_deployed == 'true' && github.event.inputs.action != 'destroy' }}
+        run: |
+          echo "Application is already deployed!"
+          echo "EC2 Instance URL: http://${{ steps.check_deployment.outputs.EC2_IP }}"
+          echo "API Gateway URL: ${{ steps.check_deployment.outputs.API_URL }}"
