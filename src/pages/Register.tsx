@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,7 +71,7 @@ const Register = () => {
   };
   
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-100 relative overflow-hidden">
+    <div className="min-h-[calc(100vh-49px)] flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-100 relative overflow-hidden">
       {/* Geometric shapes */}
       <div className="absolute bottom-20 left-20 w-72 h-72 rounded-full bg-green-200 opacity-40 mix-blend-multiply animate-pulse"></div>
       <div className="absolute top-20 right-20 w-64 h-64 rounded-full bg-orange-200 opacity-40 mix-blend-multiply animate-pulse"></div>

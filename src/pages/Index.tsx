@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
@@ -58,7 +57,7 @@ const Index = () => {
   };
   
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-4 md:p-8 relative overflow-hidden">
+    <div className="min-h-[calc(100vh-49px)] bg-gradient-to-br from-blue-50 to-purple-50 p-4 md:p-8 relative overflow-hidden">
       {/* Geometric shapes for visual interest */}
       <div className="absolute top-0 left-0 w-64 h-64 rounded-br-full bg-blue-100 opacity-50"></div>
       <div className="absolute bottom-0 right-0 w-80 h-80 rounded-tl-full bg-purple-100 opacity-50"></div>
