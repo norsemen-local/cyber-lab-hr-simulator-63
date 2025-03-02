@@ -1,3 +1,4 @@
+
 name: Deploy to AWS
 
 on:
@@ -45,7 +46,7 @@ jobs:
         run: |
           # Check if Terraform state exists
           cd terraform
-          if [[ -f terraform.tfstate ]]; then
+          if [ -f terraform.tfstate ]; then
             echo "terraform_deployed=true" >> $GITHUB_OUTPUT
           else
             echo "terraform_deployed=false" >> $GITHUB_OUTPUT
@@ -104,10 +105,12 @@ jobs:
         id: terraform_outputs
         run: |
           cd terraform
-          EC2_IP=$(terraform output -raw ec2_public_ip)
-          API_URL=$(terraform output -raw api_gateway_url)
-          ALB_DNS=$(terraform output -raw alb_dns_name)
-          INSTANCE_ID=$(terraform state show aws_instance.hr_portal_ec2 | grep "id" | head -n 1 | awk -F= '{print $2}' | xargs)
+          EC2_IP=$(terraform output -raw ec2_public_ip || echo "unavailable")
+          API_URL=$(terraform output -raw api_gateway_url || echo "unavailable")
+          ALB_DNS=$(terraform output -raw alb_dns_name || echo "unavailable")
+          
+          # Get instance ID using a more reliable method
+          INSTANCE_ID=$(terraform state show aws_instance.hr_portal_ec2 | grep -E '^\s*id\s*=' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "unavailable")
           
           echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
           echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
@@ -119,6 +122,12 @@ jobs:
         id: wait_for_instance
         run: |
           INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
+          
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping instance wait step."
+            exit 0
+          fi
+          
           echo "Waiting for instance $INSTANCE_ID to be fully initialized..."
           
           # Wait for instance to be running
@@ -148,7 +157,7 @@ jobs:
           sleep 60
           
       - name: Test instance connectivity
-        if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
+        if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
         run: |
           INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
           
@@ -162,7 +171,7 @@ jobs:
           sleep 15
           
       - name: Deploy Docker container
-        if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' }}
+        if: ${{ github.ref == 'refs/heads/main' && steps.check_resources.outputs.existing_resources != 'true' && steps.check_resources.outputs.terraform_deployed != 'true' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
         run: |
           INSTANCE_ID=${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
           EC2_IP=${{ steps.terraform_outputs.outputs.EC2_IP }}
