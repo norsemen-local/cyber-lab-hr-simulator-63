@@ -1,0 +1,61 @@
+
+name: HR Portal - Display URLs
+on:
+  workflow_call:
+    inputs:
+      existing_resources:
+        description: 'Whether resources exist'
+        type: string
+        required: true
+      terraform_deployed:
+        description: 'Whether terraform is deployed'
+        type: string
+        required: true
+      check_ec2_ip:
+        description: 'EC2 IP from check'
+        type: string
+        required: false
+        default: 'unavailable'
+      check_alb_dns:
+        description: 'ALB DNS from check'
+        type: string
+        required: false
+        default: 'unavailable'
+      check_api_url:
+        description: 'API URL from check'
+        type: string
+        required: false
+        default: 'unavailable'
+      deploy_ec2_ip:
+        description: 'EC2 IP from deploy'
+        type: string
+        required: false
+        default: 'unavailable'
+      deploy_alb_dns:
+        description: 'ALB DNS from deploy'
+        type: string
+        required: false
+        default: 'unavailable'
+      deploy_api_url:
+        description: 'API URL from deploy'
+        type: string
+        required: false
+        default: 'unavailable'
+
+jobs:
+  display_urls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display deployment URLs
+        run: |
+          if [[ "${{ inputs.existing_resources }}" == "true" || "${{ inputs.terraform_deployed }}" == "true" ]]; then
+            echo "Application is already deployed!"
+            echo "EC2 Instance URL: http://${{ inputs.check_ec2_ip }}"
+            echo "ALB URL: http://${{ inputs.check_alb_dns }}"
+            echo "API Gateway URL: ${{ inputs.check_api_url }}"
+          else
+            echo "Deployment completed!"
+            echo "EC2 Instance URL: http://${{ inputs.deploy_ec2_ip }}"
+            echo "ALB URL: http://${{ inputs.deploy_alb_dns }}"
+            echo "API Gateway URL: ${{ inputs.deploy_api_url }}"
+          fi
