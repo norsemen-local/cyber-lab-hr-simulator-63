@@ -26,6 +26,7 @@ jobs:
       ec2_ip: ${{ steps.terraform_outputs.outputs.EC2_IP }}
       api_url: ${{ steps.terraform_outputs.outputs.API_URL }}
       alb_dns: ${{ steps.terraform_outputs.outputs.ALB_DNS }}
+      instance_id: ${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
     
     steps:
       - name: Checkout code
@@ -72,12 +73,12 @@ jobs:
         id: terraform_outputs
         run: |
           cd terraform
-          EC2_IP=$(terraform output -raw ec2_public_ip || echo "unavailable")
-          API_URL=$(terraform output -raw api_gateway_url || echo "unavailable")
-          ALB_DNS=$(terraform output -raw alb_dns_name || echo "unavailable")
+          EC2_IP=$(terraform output -raw ec2_public_ip 2>/dev/null || echo "unavailable")
+          API_URL=$(terraform output -raw api_gateway_url 2>/dev/null || echo "unavailable")
+          ALB_DNS=$(terraform output -raw alb_dns_name 2>/dev/null || echo "unavailable")
           
           # Get instance ID using a reliable method
-          INSTANCE_ID=$(terraform state show aws_instance.hr_portal_ec2 | grep -E '^\s*id\s*=' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/' || echo "unavailable")
+          INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --query "Reservations[0].Instances[0].InstanceId" --output text 2>/dev/null || echo "unavailable")
           
           echo "EC2_IP=$EC2_IP" >> $GITHUB_OUTPUT
           echo "API_URL=$API_URL" >> $GITHUB_OUTPUT
@@ -85,14 +86,14 @@ jobs:
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_OUTPUT
       
       - name: Wait for instance
-        if: ${{ github.ref == 'refs/heads/main' }}
-        uses: ./.github/workflows/wait-for-instance.yml@main
+        if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
+        uses: ./.github/workflows/wait-for-instance.yml
         with:
           instance_id: ${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
       
       - name: Deploy application
         if: ${{ github.ref == 'refs/heads/main' && steps.terraform_outputs.outputs.INSTANCE_ID != 'unavailable' }}
-        uses: ./.github/workflows/deploy-application.yml@main
+        uses: ./.github/workflows/deploy-application.yml
         with:
           instance_id: ${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
           ec2_ip: ${{ steps.terraform_outputs.outputs.EC2_IP }}

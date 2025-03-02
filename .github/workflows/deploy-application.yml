@@ -30,6 +30,11 @@ jobs:
           INSTANCE_ID=${{ inputs.instance_id }}
           EC2_IP=${{ inputs.ec2_ip }}
           
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping deployment."
+            exit 0
+          fi
+          
           # Create temporary S3 bucket for Docker image transfer
           BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
           aws s3 mb s3://$BUCKET_NAME

@@ -60,6 +60,11 @@ jobs:
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
           
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping connectivity test."
+            exit 0
+          fi
+          
           echo "Testing instance with simple SSM command..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
