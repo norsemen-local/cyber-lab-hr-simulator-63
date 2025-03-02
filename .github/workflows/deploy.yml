@@ -83,11 +83,12 @@ jobs:
             echo "EC2_IP=unavailable" >> $GITHUB_OUTPUT
             echo "API_URL=unavailable" >> $GITHUB_OUTPUT
             echo "ALB_DNS=unavailable" >> $GITHUB_OUTPUT
+            echo "No existing AWS resources were found." 
           fi
   
   deploy:
     needs: check_resources
-    if: ${{ (github.event.inputs.action != 'destroy') && needs.check_resources.outputs.terraform_deployed == 'false' && needs.check_resources.outputs.existing_resources == 'false' }}
+    if: ${{ github.event.inputs.action != 'destroy' }}
     runs-on: ubuntu-latest
     outputs:
       ec2_ip: ${{ steps.terraform_outputs.outputs.EC2_IP }}
@@ -239,7 +240,7 @@ jobs:
   
   destroy:
     needs: check_resources
-    if: ${{ github.event.inputs.action == 'destroy' && github.event.inputs.confirmation == 'destroy' && needs.check_resources.outputs.existing_resources == 'true' }}
+    if: ${{ github.event.inputs.action == 'destroy' && github.event.inputs.confirmation == 'destroy' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
