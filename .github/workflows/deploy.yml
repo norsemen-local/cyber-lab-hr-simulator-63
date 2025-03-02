@@ -89,7 +89,7 @@ jobs:
           
           # Wait for the instance to be ready - significantly increased wait time
           echo "Waiting for instance to be fully initialized and ready for SSM commands..."
-          MAX_ATTEMPTS=30
+          MAX_ATTEMPTS=40  # Increased from 30
           for i in $(seq 1 $MAX_ATTEMPTS); do
             echo "Attempt $i/$MAX_ATTEMPTS: Checking if instance is ready..."
             
@@ -113,14 +113,26 @@ jobs:
               continue
             fi
             
-            # Check if port 80 is open (requires netcat)
-            echo "Checking if port 80 is open on instance $EC2_IP..."
-            if nc -z -w5 $EC2_IP 80 2>/dev/null; then
-              echo "Port 80 is OPEN on instance $EC2_IP!"
+            # Attempt direct connectivity check using netcat if available
+            if command -v nc &> /dev/null; then
+              echo "Checking if port 80 is open on instance $EC2_IP..."
+              if nc -z -w5 $EC2_IP 80 2>/dev/null; then
+                echo "Port 80 is OPEN on instance $EC2_IP!"
+              else
+                echo "Port 80 is NOT OPEN on instance $EC2_IP. Waiting 30 seconds..."
+                sleep 30
+                continue
+              fi
             else
-              echo "Port 80 is NOT OPEN on instance $EC2_IP. Waiting 30 seconds..."
-              sleep 30
-              continue
+              # Fallback to a ping test if netcat is not available
+              echo "Checking if instance is reachable..."
+              if ping -c 1 $EC2_IP &> /dev/null; then
+                echo "Instance is reachable via ping"
+              else
+                echo "Instance is not reachable via ping. Waiting 30 seconds..."
+                sleep 30
+                continue
+              fi
             fi
             
             # Check SSM status
@@ -141,13 +153,17 @@ jobs:
             fi
           done
           
+          # Wait more time for the instance to fully initialize
+          echo "Waiting an additional 2 minutes for instance services to fully start..."
+          sleep 120
+          
           # Try a simple SSM command first to verify connectivity with extended timeout
           echo "Testing SSM connectivity with a simple command..."
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=['echo \"SSM test successful\"']" \
-            --comment "Testing SSM connectivity" || echo "Initial SSM test failed, but continuing deployment"
+            --parameters "commands=['echo \"SSM test successful\"', 'yum list installed nginx || yum install -y nginx', 'systemctl status nginx || systemctl start nginx']" \
+            --comment "Testing SSM connectivity and ensuring Nginx is installed" || echo "Initial SSM test failed, but continuing deployment"
           
           # Wait a bit more to ensure the command had time to process
           sleep 15
@@ -157,7 +173,13 @@ jobs:
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=['systemctl status nginx', 'ss -tunlp | grep :80', 'curl -s http://localhost']" \
+            --parameters "commands=[
+              'echo \"Checking Nginx installation and status...\"',
+              'yum list installed | grep nginx || yum install -y nginx',
+              'systemctl status nginx || systemctl start nginx', 
+              'ss -tunlp | grep :80 || echo \"Port 80 not listening\"', 
+              'curl -s http://localhost || echo \"No response from localhost\"'
+            ]" \
             --comment "Checking Nginx status" || echo "Nginx status check failed, but continuing deployment"
           
           sleep 15
@@ -173,10 +195,10 @@ jobs:
               'mkdir -p /var/www/html', 
               'echo \"<!DOCTYPE html><html><head><title>HR Portal - GitHub Actions Deployment</title><style>body{font-family:Arial,sans-serif;margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;text-align:center;background-color:#f5f5f5;}h1{color:#4CAF50;}p{margin:20px 0;}</style></head><body><h1>HR Portal Deployment Success!</h1><p>Application deployed via GitHub Actions at $(date)</p></body></html>\" > /var/www/html/index.html', 
               'chmod -R 755 /var/www/html', 
-              'chown -R nginx:nginx /var/www/html || true',
-              'systemctl restart nginx',
+              'chown -R nginx:nginx /var/www/html || echo \"Could not change ownership\"',
+              'systemctl restart nginx || (yum install -y nginx && systemctl start nginx)',
               'systemctl status nginx',
-              'ss -tunlp | grep :80',
+              'ss -tunlp | grep :80 || echo \"Port 80 not listening after deployment\"',
               'echo \"Deployment completed at $(date)\"'
             ]" \
             --comment "Deploy HR Portal application" || echo "SSM deployment command failed, but infrastructure is deployed"

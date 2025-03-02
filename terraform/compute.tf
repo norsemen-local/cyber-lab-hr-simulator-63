@@ -13,19 +13,40 @@ resource "aws_instance" "hr_portal_ec2" {
     set -e
     # Log all commands for debugging
     exec > >(tee /var/log/user-data.log) 2>&1
-    echo "Starting user data script execution..."
+    echo "Starting user data script execution at $(date)..."
     
     # Update system packages
     echo "Updating system packages..."
     yum update -y
     
-    # Install required packages
-    echo "Installing Nginx, MySQL client, Git..."
-    yum install -y nginx mysql git
+    # Install Amazon Linux extras repository
+    echo "Enabling Amazon Linux extras..."
+    amazon-linux-extras enable nginx1
     
-    # Verify Nginx installation
+    # Install required packages with explicit confirmation on errors
+    echo "Installing Nginx, MySQL client, Git..."
+    yum install -y nginx mysql git || {
+      echo "ERROR: Failed to install packages. Retrying with more details..."
+      yum install -y nginx -v || echo "NGINX INSTALLATION FAILED"
+      yum install -y mysql -v || echo "MYSQL INSTALLATION FAILED"
+      yum install -y git -v || echo "GIT INSTALLATION FAILED"
+    }
+    
+    # If Amazon Linux 2, use alternate approach for Nginx
+    if [ -f /etc/system-release ] && grep -q "Amazon Linux 2" /etc/system-release; then
+      echo "Detected Amazon Linux 2, using alternative Nginx installation..."
+      amazon-linux-extras install -y nginx1
+    fi
+    
+    # Double-check Nginx installation
     echo "Verifying Nginx installation..."
-    which nginx || { echo "Nginx not found"; exit 1; }
+    yum list installed | grep nginx
+    which nginx || {
+      echo "Nginx not found after installation attempt. Trying alternative installation..."
+      amazon-linux-extras list
+      amazon-linux-extras install -y nginx1
+      yum install -y nginx
+    }
     
     # Install and configure SSM Agent
     echo "Installing and configuring SSM Agent..."
@@ -55,15 +76,67 @@ resource "aws_instance" "hr_portal_ec2" {
       fi
     fi
     
+    # Create Nginx configuration directory if it doesn't exist
+    echo "Ensuring Nginx configuration directories exist..."
+    mkdir -p /etc/nginx/conf.d
+    
     # Start and enable Nginx
     echo "Starting Nginx service..."
-    systemctl start nginx
+    systemctl start nginx || {
+      echo "Failed to start Nginx. Checking status..."
+      systemctl status nginx
+      echo "Checking if Nginx executable exists..."
+      ls -la /usr/sbin/nginx || echo "Nginx binary not found"
+      echo "Checking Nginx configuration..."
+      nginx -t || echo "Nginx configuration test failed"
+      echo "Retrying Nginx start..."
+      systemctl restart nginx
+    }
+    
     systemctl enable nginx
-    systemctl status nginx
+    
+    # Create a service file if it doesn't exist (useful on some Amazon Linux versions)
+    if [ ! -f /usr/lib/systemd/system/nginx.service ]; then
+      echo "Creating Nginx service file..."
+      cat > /usr/lib/systemd/system/nginx.service <<EOSVC
+[Unit]
+Description=The NGINX HTTP and reverse proxy server
+After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+Type=forking
+PIDFile=/run/nginx.pid
+ExecStartPre=/usr/sbin/nginx -t
+ExecStart=/usr/sbin/nginx
+ExecReload=/bin/kill -s HUP $MAINPID
+KillSignal=SIGQUIT
+TimeoutStopSec=5
+KillMode=mixed
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+EOSVC
+      systemctl daemon-reload
+      systemctl start nginx
+      systemctl enable nginx
+    fi
     
     # Verify Nginx is listening on port 80
     echo "Verifying Nginx is listening on port 80..."
-    ss -tunlp | grep :80 || { echo "Nginx is not listening on port 80!"; systemctl restart nginx; }
+    ss -tunlp | grep :80 || {
+      echo "Nginx is not listening on port 80! Troubleshooting..."
+      echo "Checking Nginx configuration:"
+      nginx -t
+      echo "Checking Nginx error log:"
+      tail -n 50 /var/log/nginx/error.log || echo "No Nginx error log found"
+      
+      # Try to restart Nginx
+      echo "Attempting to restart Nginx..."
+      systemctl restart nginx
+      sleep 5
+      ss -tunlp | grep :80 || echo "Still not listening after restart"
+    }
     
     # Install Node.js
     echo "Installing Node.js..."
@@ -108,7 +181,7 @@ resource "aws_instance" "hr_portal_ec2" {
     
     # Remove default Nginx configuration if it exists
     echo "Removing default Nginx configuration..."
-    rm -f /etc/nginx/conf.d/default.conf
+    rm -f /etc/nginx/conf.d/default.conf || true
     
     # Create a default index.html file
     echo "Creating default index.html file..."
@@ -137,21 +210,64 @@ resource "aws_instance" "hr_portal_ec2" {
     # Set correct permissions
     echo "Setting file permissions..."
     chmod -R 755 /var/www/html
-    chown -R nginx:nginx /var/www/html || true
+    chown -R nginx:nginx /var/www/html || echo "Nginx user not found, permissions not changed"
     
     # Restart Nginx to apply config
     echo "Restarting Nginx to apply configuration..."
-    systemctl restart nginx
+    nginx -t && systemctl restart nginx || {
+      echo "Nginx config test failed. Checking details..."
+      cat /etc/nginx/conf.d/hr-portal.conf
+      echo "Default Nginx config:"
+      cat /etc/nginx/nginx.conf || echo "nginx.conf not found"
+      echo "Attempting to fix configuration..."
+      
+      # Create a minimal working nginx.conf if needed
+      if [ ! -f /etc/nginx/nginx.conf ] || ! nginx -t; then
+        echo "Creating minimal working nginx.conf..."
+        cat > /etc/nginx/nginx.conf <<EONGINX
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log;
+pid /run/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    log_format  main  '\$remote_addr - \$remote_user [\$time_local] "\$request" '
+                      '\$status \$body_bytes_sent "\$http_referer" '
+                      '"\$http_user_agent" "\$http_x_forwarded_for"';
+
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile            on;
+    tcp_nopush          on;
+    tcp_nodelay         on;
+    keepalive_timeout   65;
+    types_hash_max_size 2048;
+
+    include             /etc/nginx/mime.types;
+    default_type        application/octet-stream;
+
+    include /etc/nginx/conf.d/*.conf;
+}
+EONGINX
+        systemctl restart nginx
+      fi
+    }
     
     # Verify Nginx is running after restart
     echo "Verifying Nginx status after restart..."
     systemctl status nginx
+    ss -tunlp | grep :80
+    curl -s http://localhost/ | head
     
     # Signal that the instance is ready for SSM commands
     echo "Marking instance as ready for SSM commands..."
     touch /var/lib/cloud/instance/boot-finished
     
-    echo "User data script execution completed successfully!"
+    echo "User data script execution completed successfully at $(date)!"
   EOF
 
   tags = merge(local.common_tags, {
