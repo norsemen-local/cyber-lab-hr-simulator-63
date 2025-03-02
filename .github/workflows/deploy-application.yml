@@ -52,7 +52,7 @@ jobs:
               'docker load -i /tmp/hr-portal-app.tar',
               'docker stop hr-portal-container || true',
               'docker rm hr-portal-container || true',
-              'docker run -d --name hr-portal-container -p 80:80 hr-portal-app:latest',
+              'docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest',
               'echo \"Docker container status:\"',
               'docker ps',
               'curl -s http://localhost || echo \"Could not connect to web server\"'

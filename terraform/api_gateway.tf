@@ -90,4 +90,63 @@ resource "aws_api_gateway_integration" "api_delete_integration" {
   uri                     = "http://${aws_lb.hr_portal_alb.dns_name}/api"
 }
 
+# Add wildcard resource that allows ANY method (security vulnerability)
+resource "aws_api_gateway_resource" "wildcard_resource" {
+  rest_api_id = aws_api_gateway_rest_api.hr_portal_api.id
+  parent_id   = aws_api_gateway_rest_api.hr_portal_api.root_resource_id
+  path_part   = "{proxy+}"
+}
+
+# ANY method on wildcard resource (security vulnerability)
+resource "aws_api_gateway_method" "wildcard_any_method" {
+  rest_api_id   = aws_api_gateway_rest_api.hr_portal_api.id
+  resource_id   = aws_api_gateway_resource.wildcard_resource.id
+  http_method   = "ANY"
+  authorization = "NONE"
+
+  request_parameters = {
+    "method.request.path.proxy" = true
+  }
+}
+
+# Integration for ANY method (security vulnerability)
+resource "aws_api_gateway_integration" "wildcard_any_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.hr_portal_api.id
+  resource_id             = aws_api_gateway_resource.wildcard_resource.id
+  http_method             = aws_api_gateway_method.wildcard_any_method.http_method
+  integration_http_method = "ANY"
+  type                    = "HTTP_PROXY"
+  uri                     = "http://${aws_lb.hr_portal_alb.dns_name}/{proxy}"
+
+  request_parameters = {
+    "integration.request.path.proxy" = "method.request.path.proxy"
+  }
+}
+
+# Lambda function with overly permissive role (security vulnerability)
+resource "aws_iam_role" "lambda_overly_permissive_role" {
+  name = "hr-portal-lambda-overly-permissive-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+# Overly permissive policy attachment (security vulnerability)
+resource "aws_iam_role_policy_attachment" "lambda_overly_permissive_attachment" {
+  role       = aws_iam_role.lambda_overly_permissive_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"  # Excessive privileges
+}
+
 # ... keep existing code (API Gateway Deployment, API Gateway Stage)
