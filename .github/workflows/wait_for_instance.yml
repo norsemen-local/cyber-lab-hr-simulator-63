@@ -167,19 +167,19 @@ EOF
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=[
-              'echo \"SSM test successful\"',
-              'echo \"Checking Docker installation...\"',
-              'if ! command -v docker &> /dev/null; then',
-              '  echo \"Docker not found, installing...\"',
-              '  sudo amazon-linux-extras install -y docker || sudo yum install -y docker',
-              '  sudo systemctl enable docker',
-              '  sudo systemctl start docker',
-              'fi',
-              'docker --version',
-              'sudo systemctl status docker',
-              'echo \"Docker status: $?\"'
-            ]" \
+            --parameters 'commands=[
+              "echo \"SSM test successful\"",
+              "echo \"Checking Docker installation...\"",
+              "if ! command -v docker &> /dev/null; then",
+              "  echo \"Docker not found, installing...\"",
+              "  sudo amazon-linux-extras install -y docker || sudo yum install -y docker",
+              "  sudo systemctl enable docker",
+              "  sudo systemctl start docker",
+              "fi",
+              "docker --version",
+              "sudo systemctl status docker",
+              "echo \"Docker status: $?\""
+            ]' \
             --comment "Testing SSM connectivity and Docker installation" || echo "SSM command failed. Continuing workflow."
             
           sleep 15
@@ -189,13 +189,13 @@ EOF
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters "commands=[
-              'echo \"Running final Docker verification...\"',
-              'docker --version || echo \"Docker is not installed properly\"',
-              'sudo systemctl status docker || echo \"Docker service is not running properly\"',
-              'sudo systemctl restart docker || echo \"Failed to restart Docker\"',
-              'echo \"Docker verification complete\"'
-            ]" \
+            --parameters 'commands=[
+              "echo \"Running final Docker verification...\"",
+              "docker --version || echo \"Docker is not installed properly\"",
+              "sudo systemctl status docker || echo \"Docker service is not running properly\"",
+              "sudo systemctl restart docker || echo \"Failed to restart Docker\"",
+              "echo \"Docker verification complete\""
+            ]' \
             --comment "Final Docker verification" || echo "SSM command failed. Continuing workflow."
             
           sleep 15
