@@ -24,8 +24,7 @@ resource "aws_db_instance" "hr_portal_db" {
   db_subnet_group_name    = aws_db_subnet_group.rds_subnet_group.name
   vpc_security_group_ids  = [aws_security_group.rds_sg.id]
   skip_final_snapshot     = true
-  publicly_accessible     = false
-  backup_retention_period = 7
+  publicly_accessible     = true
   multi_az                = false
 
   tags = merge(local.common_tags, {
