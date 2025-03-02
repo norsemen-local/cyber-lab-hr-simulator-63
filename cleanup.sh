@@ -30,25 +30,25 @@ delete_rds_instance(){
 EXISTS=$(aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE_ID" --query "DBInstances[0].DBInstanceIdentifier" --output text 2>/dev/null)
 
 if [[ -z "$EXISTS" ]]; then
-    echo "✅ RDS instance '$DB_INSTANCE_ID' does not exist. Nothing to delete."
+    log "✅ RDS instance '$DB_INSTANCE_ID' does not exist. Nothing to delete."
 else
-    echo "🔎 RDS instance '$DB_INSTANCE_ID' found. Preparing to delete..."
+    log "🔎 RDS instance '$DB_INSTANCE_ID' found. Preparing to delete..."
 
     # Get associated Subnet Group Name
     SUBNET_GROUP=$(aws rds describe-db-instances --db-instance-identifier "$DB_INSTANCE_ID" --query "DBInstances[0].DBSubnetGroup.DBSubnetGroupName" --output text)
 
     # Delete the RDS instance
-    echo "🗑 Deleting RDS instance: $DB_INSTANCE_ID..."
+    log "🗑 Deleting RDS instance: $DB_INSTANCE_ID..."
     aws rds delete-db-instance --db-instance-identifier "$DB_INSTANCE_ID" --skip-final-snapshot &>/dev/null
-    echo "⏳ Waiting for RDS instance deletion to complete..."
+    log "⏳ Waiting for RDS instance deletion to complete..."
     aws rds wait db-instance-deleted --db-instance-identifier "$DB_INSTANCE_ID"
-    echo "✅ RDS instance '$DB_INSTANCE_ID' deleted."
+    log "✅ RDS instance '$DB_INSTANCE_ID' deleted."
 
     # Delete the associated subnet group
     if [[ -n "$SUBNET_GROUP" ]]; then
-        echo "🗑 Deleting associated RDS Subnet Group: $SUBNET_GROUP..."
+        log "🗑 Deleting associated RDS Subnet Group: $SUBNET_GROUP..."
         aws rds delete-db-subnet-group --db-subnet-group-name "$SUBNET_GROUP" &>/dev/null
-        echo "✅ RDS Subnet Group '$SUBNET_GROUP' deleted."
+        log "✅ RDS Subnet Group '$SUBNET_GROUP' deleted."
     else
         echo "⚠ No associated subnet group found for '$DB_INSTANCE_ID'."
     fi
