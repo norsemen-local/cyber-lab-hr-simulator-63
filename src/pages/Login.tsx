@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -5,13 +6,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Navigate, useNavigate } from "react-router-dom";
 import { login, getCurrentUser, setCurrentUser } from "../services/authService";
 import { useToast } from "@/components/ui/use-toast";
-import { LogIn } from "lucide-react";
+import { LogIn, AlertTriangle } from "lucide-react";
 import { Link } from "react-router-dom";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Login = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sqlQuery, setSqlQuery] = useState("");
   const { toast } = useToast();
   const navigate = useNavigate();
   
@@ -23,6 +26,10 @@ const Login = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    
+    // Show SQL query that would be executed (for demo purposes)
+    const demoQuery = `SELECT * FROM users WHERE username='${username}' AND password='${password}'`;
+    setSqlQuery(demoQuery);
     
     // Simulate API call delay
     setTimeout(() => {
@@ -99,6 +106,20 @@ const Login = () => {
                   className="bg-white/70"
                 />
               </div>
+              
+              {sqlQuery && (
+                <Alert variant="destructive" className="my-4">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>SQL Injection Demo</AlertTitle>
+                  <AlertDescription className="font-mono text-xs break-all">
+                    {sqlQuery}
+                  </AlertDescription>
+                  <AlertDescription className="mt-2 text-xs">
+                    Try: <code className="bg-gray-100 p-1 rounded">admin' --</code> as username
+                  </AlertDescription>
+                </Alert>
+              )}
+              
               <Button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all" disabled={loading}>
                 {loading ? 
                   "Logging in..." : 

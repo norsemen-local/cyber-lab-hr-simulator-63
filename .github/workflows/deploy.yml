@@ -21,6 +21,7 @@ on:
 jobs:
   check:
     uses: ./.github/workflows/check_resources.yml
+    secrets: inherit
   
   deploy:
     needs: check
@@ -51,3 +52,4 @@ jobs:
       deploy_ec2_ip: ${{ needs.deploy.outputs.ec2_ip }}
       deploy_alb_dns: ${{ needs.deploy.outputs.alb_dns }}
       deploy_api_url: ${{ needs.deploy.outputs.api_url }}
+    secrets: inherit

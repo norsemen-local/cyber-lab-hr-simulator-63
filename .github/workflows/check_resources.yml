@@ -18,6 +18,11 @@ on:
       alb_dns:
         description: "ALB DNS name"
         value: ${{ jobs.check_resources.outputs.alb_dns }}
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
 
 jobs:
   check_resources:

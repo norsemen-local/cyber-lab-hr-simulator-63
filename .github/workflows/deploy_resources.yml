@@ -21,6 +21,11 @@ on:
       instance_id:
         description: "EC2 instance ID"
         value: ${{ jobs.deploy.outputs.instance_id }}
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
 
 jobs:
   deploy:
