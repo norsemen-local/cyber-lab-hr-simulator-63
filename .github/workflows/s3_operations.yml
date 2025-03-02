@@ -1,0 +1,84 @@
+
+name: HR Portal - S3 Operations
+on:
+  workflow_call:
+    inputs:
+      instance_id:
+        description: 'EC2 instance ID'
+        type: string
+        required: true
+    outputs:
+      bucket_name:
+        description: 'S3 bucket name'
+        value: ${{ jobs.handle_s3.outputs.bucket_name }}
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+jobs:
+  handle_s3:
+    runs-on: ubuntu-latest
+    outputs:
+      bucket_name: ${{ steps.create_bucket.outputs.bucket_name }}
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Build and save Docker image
+        id: build_docker
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          # Build the Docker image locally in the GitHub Actions runner
+          echo "Building Docker image..."
+          docker build -t hr-portal-app:latest .
+          docker save hr-portal-app:latest > hr-portal-app.tar
+
+      - name: Create S3 bucket and upload Docker image
+        id: create_bucket
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          # Create unique bucket name and store it as an environment variable for later steps
+          BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          
+          # Create temporary S3 bucket with unique name 
+          echo "Creating temporary S3 bucket: $BUCKET_NAME"
+          aws s3 mb s3://$BUCKET_NAME
+          
+          echo "Setting bucket policy for EC2 role access..."
+          # Create a temporary policy file
+          cat > /tmp/bucket-policy.json <<EOL
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "AWS": "arn:aws:iam::*:role/hr-portal-ec2-role"
+                },
+                "Action": ["s3:GetObject", "s3:ListBucket"],
+                "Resource": [
+                  "arn:aws:s3:::$BUCKET_NAME",
+                  "arn:aws:s3:::$BUCKET_NAME/*"
+                ]
+              }
+            ]
+          }
+          EOL
+          
+          aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy file:///tmp/bucket-policy.json || echo "Could not set bucket policy, continuing..."
+          
+          # Upload Docker image to S3 without setting public ACLs
+          echo "Uploading Docker image to S3..."
+          aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
+          
+          # List bucket contents to verify upload
+          echo "Verifying upload with bucket listing:"
+          aws s3 ls s3://$BUCKET_NAME/

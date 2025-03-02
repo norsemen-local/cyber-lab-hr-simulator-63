@@ -1,0 +1,103 @@
+
+name: HR Portal - Deploy Container
+on:
+  workflow_call:
+    inputs:
+      instance_id:
+        description: 'EC2 instance ID'
+        type: string
+        required: true
+      bucket_name:
+        description: 'S3 bucket name'
+        type: string
+        required: true
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+jobs:
+  deploy_container:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Deploy Docker container to EC2
+        if: ${{ inputs.instance_id != 'unavailable' }}
+        run: |
+          INSTANCE_ID=${{ inputs.instance_id }}
+          BUCKET_NAME=${{ inputs.bucket_name }}
+          
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping deployment."
+            exit 0
+          fi
+          
+          # Deploy using SSM with simplified download methods
+          echo "Deploying Docker container to EC2..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters '{"commands":[
+              "echo \"====== STARTING DEPLOYMENT $(date) ======\" > /tmp/deployment.log",
+              
+              "echo \"Bucket name: '${{ inputs.bucket_name }}'\" >> /tmp/deployment.log",
+              "echo \"S3 URL: s3://${{ inputs.bucket_name }}/hr-portal-app.tar\" >> /tmp/deployment.log",
+              
+              "echo \"===== CONFIGURING AWS =====\" >> /tmp/deployment.log",
+              "if ! command -v aws &> /dev/null; then",
+              "  echo \"Installing AWS CLI...\" >> /tmp/deployment.log",
+              "  yum install -y aws-cli >> /tmp/deployment.log 2>&1",
+              "fi",
+              
+              "echo \"Configuring AWS region...\" >> /tmp/deployment.log",
+              "aws configure set region us-east-1 >> /tmp/deployment.log 2>&1",
+              
+              "echo \"Verifying AWS credentials...\" >> /tmp/deployment.log",
+              "aws sts get-caller-identity >> /tmp/deployment.log 2>&1 || echo \"Failed to get caller identity\" >> /tmp/deployment.log",
+              
+              "echo \"===== DOWNLOAD ATTEMPTS =====\" >> /tmp/deployment.log",
+              "echo \"Attempt 1: Using instance profile credentials...\" >> /tmp/deployment.log",
+              "aws s3 cp \"s3://${{ inputs.bucket_name }}/hr-portal-app.tar\" /tmp/hrApp/ >> /tmp/deployment.log 2>&1",
+              
+              "echo \"Checking if download was successful...\" >> /tmp/deployment.log",
+              "ls -la /tmp/hrApp/ >> /tmp/deployment.log 2>&1",
+              
+              "if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then",
+              "  echo \"ERROR: Failed to download Docker image\" >> /tmp/deployment.log",
+              "  echo \"Attempting direct download via URL...\" >> /tmp/deployment.log",
+              "  curl -L -o /tmp/hrApp/hr-portal-app.tar \"https://${{ inputs.bucket_name }}.s3.amazonaws.com/hr-portal-app.tar\" >> /tmp/deployment.log 2>&1",
+              "fi",
+              
+              "if [ ! -f \"/tmp/hrApp/hr-portal-app.tar\" ]; then",
+              "  echo \"CRITICAL ERROR: All download attempts failed\" >> /tmp/deployment.log",
+              "  cat /tmp/deployment.log",
+              "  exit 1",
+              "fi",
+              
+              "echo \"===== DOCKER DEPLOYMENT =====\" >> /tmp/deployment.log",
+              "echo \"Loading Docker image...\" >> /tmp/deployment.log",
+              "sudo docker load -i /tmp/hrApp/hr-portal-app.tar >> /tmp/deployment.log 2>&1",
+              
+              "echo \"Removing existing container if any...\" >> /tmp/deployment.log",
+              "sudo docker stop hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to stop\" >> /tmp/deployment.log",
+              "sudo docker rm hr-portal-container >> /tmp/deployment.log 2>&1 || echo \"No container to remove\" >> /tmp/deployment.log",
+              
+              "echo \"Running new container...\" >> /tmp/deployment.log",
+              "sudo docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest >> /tmp/deployment.log 2>&1",
+              
+              "echo \"Verifying container is running...\" >> /tmp/deployment.log",
+              "sudo docker ps >> /tmp/deployment.log 2>&1",
+              "sudo docker logs hr-portal-container >> /tmp/deployment.log 2>&1",
+              
+              "echo \"====== DEPLOYMENT COMPLETED $(date) ======\" >> /tmp/deployment.log",
+              "cat /tmp/deployment.log"
+            ]}' \
+            --comment "Deploy HR Portal Docker container"
