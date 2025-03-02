@@ -41,9 +41,17 @@ resource "aws_api_gateway_deployment" "api_deployment" {
   depends_on = [aws_api_gateway_integration.api_integration]
 
   rest_api_id = aws_api_gateway_rest_api.hr_portal_api.id
-  stage_name  = "prod"
 
   lifecycle {
     create_before_destroy = true
   }
+}
+
+# API Gateway Stage
+resource "aws_api_gateway_stage" "api_stage" {
+  deployment_id = aws_api_gateway_deployment.api_deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.hr_portal_api.id
+  stage_name    = "prod"
+
+  tags = local.common_tags
 }
