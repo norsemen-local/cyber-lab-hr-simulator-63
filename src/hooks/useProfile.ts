@@ -1,189 +1,117 @@
 
-import { useState, useEffect } from "react";
-import { dbService, setupUserProfile } from "../services/databaseService";
-import { useToast } from "@/components/ui/use-toast";
+import { useState, useEffect } from 'react';
 
 interface UserProfile {
   id: string;
-  name: string;
+  firstName: string;
+  lastName: string;
   email: string;
+  phone: string;
   position: string;
   department: string;
-  phone: string;
-  address: string;
-  hireDate: string;
+  joinDate: string;
   manager: string;
-  bio: string;
-  socialSecurity: string;
-  bankAccount: string;
-}
-
-interface CareerEntry {
-  id: number;
-  company: string;
-  position: string;
-  startDate: string;
-  endDate: string;
-  description: string;
-}
-
-interface Document {
-  id: number;
-  name: string;
-  date: string;
-  type: string;
+  profileImage: string;
+  address: {
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
+  skills: string[];
+  education: {
+    institution: string;
+    degree: string;
+    fieldOfStudy: string;
+    graduationYear: string;
+  }[];
+  certifications: {
+    name: string;
+    issuingOrganization: string;
+    issueDate: string;
+    expirationDate: string;
+  }[];
+  documents: {
+    id: number;
+    name: string;
+    date: string;
+    type: string;
+  }[];
 }
 
 export const useProfile = () => {
-  const { toast } = useToast();
-  
-  const [userProfile, setUserProfile] = useState<UserProfile>({
-    id: "",
-    name: "",
-    email: "",
-    position: "",
-    department: "",
-    phone: "",
-    address: "",
-    hireDate: "",
-    manager: "",
-    bio: "",
-    socialSecurity: "",
-    bankAccount: "",
-  });
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [careerHistory, setCareerHistory] = useState<CareerEntry[]>([]);
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [isAddingExperience, setIsAddingExperience] = useState(false);
-  const [newExperience, setNewExperience] = useState({
-    company: "",
-    position: "",
-    startDate: "",
-    endDate: "",
-    description: ""
-  });
-
-  // Load profile data
   useEffect(() => {
-    setupUserProfile();
-    
-    // Get the first profile (in a real app, this would use the authenticated user ID)
-    const profiles = dbService.getAll('profiles');
-    if (profiles.length > 0) {
-      const profile = profiles[0];
-      setUserProfile({
-        id: profile.id,
-        name: profile.name || "",
-        email: profile.email || "",
-        position: profile.position || "",
-        department: profile.department || "",
-        phone: profile.phone || "",
-        address: profile.address || "",
-        hireDate: profile.hireDate || "",
-        manager: profile.manager || "",
-        bio: profile.bio || "",
-        socialSecurity: profile.socialSecurity || "",
-        bankAccount: profile.bankAccount || "",
+    // Simulate API call
+    setTimeout(() => {
+      setProfile({
+        id: "1234",
+        firstName: "Alex",
+        lastName: "Johnson",
+        email: "alex.johnson@techprosolutions.com",
+        phone: "555-123-4567", // Ensure phone is always a string
+        position: "Senior Developer",
+        department: "Engineering",
+        joinDate: "2020-03-15",
+        manager: "Sarah Williams",
+        profileImage: "https://randomuser.me/api/portraits/men/32.jpg",
+        address: {
+          street: "123 Tech Lane",
+          city: "San Francisco",
+          state: "CA",
+          zipCode: "94107",
+          country: "USA"
+        },
+        skills: ["JavaScript", "React", "Node.js", "TypeScript", "GraphQL", "AWS"],
+        education: [
+          {
+            institution: "Stanford University",
+            degree: "Master's",
+            fieldOfStudy: "Computer Science",
+            graduationYear: "2018"
+          },
+          {
+            institution: "UC Berkeley",
+            degree: "Bachelor's",
+            fieldOfStudy: "Software Engineering",
+            graduationYear: "2016"
+          }
+        ],
+        certifications: [
+          {
+            name: "AWS Certified Developer",
+            issuingOrganization: "Amazon Web Services",
+            issueDate: "2021-05-10",
+            expirationDate: "2024-05-10"
+          },
+          {
+            name: "Google Cloud Professional",
+            issuingOrganization: "Google",
+            issueDate: "2022-01-15",
+            expirationDate: "2025-01-15"
+          }
+        ],
+        documents: [
+          { id: 1, name: "Employment Contract", date: "2020-03-15", type: "Legal" },
+          { id: 2, name: "Performance Review 2021", date: "2021-12-10", type: "Review" },
+          { id: 3, name: "Training Certificate", date: "2022-05-20", type: "Certificate" },
+          { id: 4, name: "Benefits Documentation", date: "2023-01-05", type: "HR" },
+          { id: 5, name: "Project Proposal", date: "2023-06-18", type: "Work" }
+        ]
       });
-      
-      setCareerHistory(profile.careerHistory || []);
-      setDocuments(profile.documents || []);
-    }
+      setLoading(false);
+    }, 1000);
   }, []);
 
-  // Handle field changes
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { id, value } = e.target;
-    setUserProfile((prev) => ({
-      ...prev,
-      [id]: value
-    }));
+  const updateProfile = (updatedProfile: Partial<UserProfile>) => {
+    setProfile(prev => prev ? { ...prev, ...updatedProfile } : null);
+    // In a real app, this would call an API to update the profile
+    console.log("Profile updated:", updatedProfile);
+    return true;
   };
 
-  // Handle save changes
-  const handleSaveChanges = () => {
-    if (!userProfile.id) return;
-    
-    dbService.update('profiles', userProfile.id, {
-      ...userProfile,
-      careerHistory,
-      documents
-    });
-    
-    toast({
-      title: "Changes saved",
-      description: "Your profile has been updated successfully."
-    });
-  };
-
-  // Handle new experience form changes
-  const handleNewExperienceChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { id, value } = e.target;
-    setNewExperience((prev) => ({
-      ...prev,
-      [id.replace('new-', '')]: value
-    }));
-  };
-
-  // Add new experience
-  const handleAddExperience = () => {
-    const newEntry = {
-      ...newExperience,
-      id: Date.now()
-    };
-    
-    setCareerHistory((prev) => [...prev, newEntry]);
-    setIsAddingExperience(false);
-    setNewExperience({
-      company: "",
-      position: "",
-      startDate: "",
-      endDate: "",
-      description: ""
-    });
-    
-    // Save to database
-    if (userProfile.id) {
-      dbService.update('profiles', userProfile.id, {
-        careerHistory: [...careerHistory, newEntry]
-      });
-      
-      toast({
-        title: "Experience added",
-        description: "Your career history has been updated."
-      });
-    }
-  };
-
-  // Delete experience
-  const handleDeleteExperience = (id: number) => {
-    const updatedHistory = careerHistory.filter(job => job.id !== id);
-    setCareerHistory(updatedHistory);
-    
-    // Save to database
-    if (userProfile.id) {
-      dbService.update('profiles', userProfile.id, {
-        careerHistory: updatedHistory
-      });
-      
-      toast({
-        title: "Experience removed",
-        description: "The entry has been deleted from your career history."
-      });
-    }
-  };
-
-  return {
-    userProfile,
-    careerHistory,
-    documents,
-    isAddingExperience,
-    setIsAddingExperience,
-    newExperience,
-    handleChange,
-    handleSaveChanges,
-    handleNewExperienceChange,
-    handleAddExperience,
-    handleDeleteExperience
-  };
+  return { profile, loading, updateProfile };
 };
