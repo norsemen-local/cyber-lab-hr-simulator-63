@@ -8,6 +8,9 @@ import { FileText, Upload } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+// API Gateway base URL would typically come from environment variables
+const API_GATEWAY_URL = "https://api-gateway-endpoint.execute-api.region.amazonaws.com/prod";
+
 const DocumentUpload = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadUrl, setUploadUrl] = useState("s3://employee-bucket/documents/");
@@ -45,36 +48,54 @@ const DocumentUpload = () => {
       // This is intentionally vulnerable to SSRF
       console.log(`Uploading to: ${uploadUrl}/${selectedFile.name}`);
 
-      // Simulated backend endpoint that would perform the SSRF
-      const response = await fetch('/api/upload', {
+      // Route the upload request through the API Gateway
+      const response = await fetch(`${API_GATEWAY_URL}/api/upload`, {
         method: 'POST',
         body: formData,
       });
 
       // For simulation purposes, we'll fetch directly from the URL if it's HTTP/HTTPS
       // In a real application, this would be done server-side and constitute the SSRF vulnerability
+      // Now routed through API Gateway
       if (uploadUrl.startsWith('http')) {
         try {
-          const directResponse = await fetch(uploadUrl, { mode: 'cors' });
+          const directResponse = await fetch(`${API_GATEWAY_URL}/proxy?url=${encodeURIComponent(uploadUrl)}`, { 
+            method: 'GET'
+          });
           const text = await directResponse.text();
           setResponseData(text);
         } catch (error) {
           // For CORS issues, simulate what would happen server-side
           // This simulates how a backend with SSRF would return the content
-          setResponseData(`Simulated SSRF Response (Browser CORS prevented actual request):\n\nMetadata for ${uploadUrl}:\n{\n  "instance-id": "i-0123456789abcdef0",\n  "instance-type": "t3.micro",\n  "local-hostname": "ip-10-0-0-123.ec2.internal",\n  "local-ipv4": "10.0.0.123",\n  "public-hostname": "ec2-12-34-56-78.compute-1.amazonaws.com",\n  "public-ipv4": "12.34.56.78",\n  "security-groups": "hr-portal-ec2-sg",\n  "iam": {\n    "security-credentials": {\n      "hr-portal-ec2-role": {\n        "AccessKeyId": "ASIA...",\n        "SecretAccessKey": "SECRET...",\n        "Token": "TOKEN...",\n        "Expiration": "2023-12-31T23:59:59Z"\n      }\n    }\n  }\n}`);
+          setResponseData(`Simulated SSRF Response (via API Gateway):\n\nMetadata for ${uploadUrl}:\n{\n  "instance-id": "i-0123456789abcdef0",\n  "instance-type": "t3.micro",\n  "local-hostname": "ip-10-0-0-123.ec2.internal",\n  "local-ipv4": "10.0.0.123",\n  "public-hostname": "ec2-12-34-56-78.compute-1.amazonaws.com",\n  "public-ipv4": "12.34.56.78",\n  "security-groups": "hr-portal-ec2-sg",\n  "iam": {\n    "security-credentials": {\n      "hr-portal-ec2-role": {\n        "AccessKeyId": "ASIA...",\n        "SecretAccessKey": "SECRET...",\n        "Token": "TOKEN...",\n        "Expiration": "2023-12-31T23:59:59Z"\n      }\n    }\n  }\n}`);
         }
       } else {
-        // For non-HTTP URLs like s3://, just show a simulated success
-        toast({
-          title: "Upload Successful",
-          description: `File ${selectedFile.name} uploaded to ${uploadUrl}`,
+        // For non-HTTP URLs like s3://, route through API Gateway
+        const gatewayResponse = await fetch(`${API_GATEWAY_URL}/upload`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            destinationUrl: uploadUrl,
+            fileName: selectedFile.name
+          }),
         });
+        
+        if (gatewayResponse.ok) {
+          toast({
+            title: "Upload Successful",
+            description: `File ${selectedFile.name} uploaded to ${uploadUrl} via API Gateway`,
+          });
+        } else {
+          throw new Error("Upload failed");
+        }
       }
     } catch (error) {
       console.error("Upload error:", error);
       toast({
         title: "Upload Failed",
-        description: "An error occurred during upload",
+        description: "An error occurred during upload via API Gateway",
         variant: "destructive",
       });
     } finally {
@@ -93,7 +114,7 @@ const DocumentUpload = () => {
     <DashboardWithSidebar>
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">Document Upload</h1>
-        <p className="text-gray-600">Upload and manage your documents securely</p>
+        <p className="text-gray-600">Upload and manage your documents securely through API Gateway</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
