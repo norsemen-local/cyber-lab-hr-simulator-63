@@ -26,6 +26,7 @@ resource "aws_db_instance" "hr_portal_db" {
   skip_final_snapshot     = true
   publicly_accessible     = true
   multi_az                = false
+  deletion_protection     = false  # Ensure deletion protection is disabled
 
   tags = merge(local.common_tags, {
     Name = "hr-portal-db"
