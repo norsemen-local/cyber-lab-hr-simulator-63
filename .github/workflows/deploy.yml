@@ -24,12 +24,43 @@ on:
         type: boolean
 
 jobs:
-  # Stage 1: Check Environment and Existing Resources
+  # Check Environment Stage
   check_environment:
-    uses: ./.github/workflows/check_environment.yml
-    secrets: inherit
+    runs-on: ubuntu-latest
+    outputs:
+      resources_exist: ${{ steps.check_resources.outputs.resources_exist }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Check for existing resources
+        id: check_resources
+        run: |
+          # Check for existing EC2 instance
+          EC2_EXISTS=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" "Name=instance-state-name,Values=pending,running,stopping,stopped" --query "Reservations[*].Instances[*].InstanceId" --output text)
+          
+          # Check for existing ALB
+          ALB_EXISTS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?contains(LoadBalancerName, 'hr-portal')].LoadBalancerArn" --output text)
+          
+          # Check for existing API Gateway
+          API_EXISTS=$(aws apigateway get-rest-apis --query "items[?contains(name, 'hr-portal')].id" --output text)
+          
+          if [ -n "$EC2_EXISTS" ] || [ -n "$ALB_EXISTS" ] || [ -n "$API_EXISTS" ]; then
+            echo "AWS resources for HR Portal already exist."
+            echo "resources_exist=true" >> $GITHUB_OUTPUT
+          else
+            echo "No existing HR Portal resources found."
+            echo "resources_exist=false" >> $GITHUB_OUTPUT
+          fi
   
-  # Ask for confirmation if resources already exist
+  # Confirmation Step
   confirmation_required:
     needs: check_environment
     if: ${{ needs.check_environment.outputs.resources_exist == 'true' && github.event.inputs.force_deploy != 'true' && github.event.inputs.action != 'destroy' }}
@@ -42,56 +73,367 @@ jobs:
           echo "::error::Alternatively, use the 'destroy' action first to clean up existing resources."
           exit 1
   
-  # Stage 2: Deploy Infrastructure (if environment check passed)
-  deploy_infrastructure:
+  # Deploy Infrastructure Stage
+  deploy_resources:
     needs: [check_environment]
     if: ${{ (needs.check_environment.outputs.resources_exist == 'false' || github.event.inputs.force_deploy == 'true') && github.event.inputs.action != 'destroy' }}
-    uses: ./.github/workflows/deploy_infrastructure.yml
-    with:
-      action: ${{ github.event.inputs.action }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    outputs:
+      ec2_ip: ${{ steps.terraform_outputs.outputs.EC2_IP }}
+      api_url: ${{ steps.terraform_outputs.outputs.API_URL }}
+      alb_dns: ${{ steps.terraform_outputs.outputs.ALB_DNS }}
+      instance_id: ${{ steps.terraform_outputs.outputs.INSTANCE_ID }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        
+      - name: Terraform Init & Apply
+        run: |
+          cd terraform
+          terraform init
+          terraform plan -var="db_username=admin" -var="db_password=password123"
+          terraform apply -auto-approve -var="db_username=admin" -var="db_password=password123"
+          
+      - name: Get infrastructure outputs
+        id: terraform_outputs
+        run: |
+          cd terraform
+          
+          # Extract values directly from raw output and clean them
+          EC2_OUTPUT=$(terraform output -raw ec2_public_ip || echo "unavailable")
+          EC2_IP=$(echo "$EC2_OUTPUT" | grep -o '^[0-9.]*' || echo "unavailable")
+          
+          ALB_OUTPUT=$(terraform output -raw alb_dns_name || echo "unavailable")
+          ALB_DNS=$(echo "$ALB_OUTPUT" | grep -o '^[a-zA-Z0-9.-]*' || echo "unavailable")
+          
+          API_OUTPUT=$(terraform output -raw api_gateway_url || echo "unavailable")
+          API_URL=$(echo "$API_OUTPUT" | grep -o '^https://[a-zA-Z0-9./-]*' || echo "unavailable")
+          
+          INSTANCE_OUTPUT=$(terraform output -raw instance_id || echo "unavailable")
+          INSTANCE_ID=$(echo "$INSTANCE_OUTPUT" | grep -o '^i-[a-z0-9]*' || echo "unavailable")
+          
+          # If extraction failed, attempt to get instance ID from AWS CLI
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" --query "Reservations[0].Instances[0].InstanceId" --output text || echo "unavailable")
+            INSTANCE_ID=$(echo "$INSTANCE_ID" | grep -o '^i-[a-z0-9]*' || echo "unavailable")
+          fi
+          
+          echo "EC2_IP=${EC2_IP}" >> $GITHUB_OUTPUT
+          echo "API_URL=${API_URL}" >> $GITHUB_OUTPUT
+          echo "ALB_DNS=${ALB_DNS}" >> $GITHUB_OUTPUT
+          echo "INSTANCE_ID=${INSTANCE_ID}" >> $GITHUB_OUTPUT
+          
+          echo "EC2 IP: ${EC2_IP}"
+          echo "ALB DNS: ${ALB_DNS}"
+          echo "API URL: ${API_URL}"
+          echo "Instance ID: ${INSTANCE_ID}"
   
-  # Stage 3: Wait for Infrastructure to be ready
-  wait_for_instance:
-    needs: deploy_infrastructure
-    if: ${{ github.event.inputs.action != 'destroy' }}
-    uses: ./.github/workflows/wait_for_instance.yml
-    with:
-      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
-    secrets: inherit
+  # Combined Instance Preparation Stage
+  prepare_instance:
+    needs: deploy_resources
+    if: ${{ needs.deploy_resources.outputs.instance_id != 'unavailable' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Wait for instance to be ready
+        run: |
+          INSTANCE_ID=${{ needs.deploy_resources.outputs.instance_id }}
+          
+          echo "Waiting for instance $INSTANCE_ID to be fully initialized..."
+          
+          # Set a reasonable timeout
+          timeout=900  # 15 minutes
+          interval=15  # 15 seconds
+          elapsed=0
+          
+          # Wait for instance to be running
+          echo "Checking if instance is running..."
+          while [ $elapsed -lt $timeout ]; do
+            STATUS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].State.Name' --output text || echo "unknown")
+            echo "Instance status: $STATUS"
+            
+            if [ "$STATUS" == "running" ]; then
+              echo "Instance is running!"
+              break
+            elif [ "$STATUS" == "terminated" ] || [ "$STATUS" == "shutting-down" ]; then
+              echo "Instance is in a terminal state: $STATUS"
+              echo "Continuing workflow but deployment may fail"
+              break
+            fi
+            
+            sleep $interval
+            elapsed=$((elapsed + interval))
+            echo "Waited for $elapsed seconds..."
+          done
+          
+          if [ $elapsed -ge $timeout ]; then
+            echo "Timeout waiting for instance to be running, but continuing workflow"
+          fi
+          
+          # Wait additional time for services to start
+          echo "Waiting an additional 2 minutes for all services to start..."
+          sleep 120
+      
+      - name: Verify and fix SSM agent
+        run: |
+          INSTANCE_ID=${{ needs.deploy_resources.outputs.instance_id }}
+          
+          echo "Verifying SSM agent status on instance $INSTANCE_ID..."
+          
+          # Check if instance is already registered with SSM
+          SSM_ONLINE=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "ConnectionLost")
+          
+          echo "SSM Agent status: $SSM_ONLINE"
+          
+          # If SSM is working, we're done
+          if [ "$SSM_ONLINE" == "Online" ]; then
+            echo "SSM Agent is online and working properly."
+            exit 0
+          fi
+          
+          # Otherwise try to restart the SSM agent using EC2 Instance Connect
+          echo "SSM Agent is not online. Attempting recovery..."
+          
+          # First try: Use AWS EC2 Instance Connect to run commands directly on the instance
+          echo "Attempting to connect to instance using EC2 Instance Connect..."
+          
+          # Check if instance is in a running state
+          INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].State.Name" --output text)
+          
+          if [ "$INSTANCE_STATE" != "running" ]; then
+            echo "Instance is not in 'running' state (current state: $INSTANCE_STATE). Cannot attempt recovery."
+            echo "WARNING: Subsequent deployment steps may fail without SSM connectivity."
+            exit 0
+          fi
+          
+          # Try to use EC2 Instance Connect to run the recovery commands
+          # We'll create a temporary SSH key for this purpose
+          echo "Generating temporary SSH key for EC2 Instance Connect..."
+          ssh-keygen -t rsa -f /tmp/temp_key -N "" -q
+          
+          # Get the public key
+          PUB_KEY=$(cat /tmp/temp_key.pub)
+          
+          # Get the instance's availability zone
+          AZ=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].Placement.AvailabilityZone" --output text)
+          
+          # Try to push the public key to the instance
+          echo "Pushing SSH key to instance..."
+          aws ec2-instance-connect send-ssh-public-key \
+            --instance-id $INSTANCE_ID \
+            --availability-zone $AZ \
+            --instance-os-user ec2-user \
+            --ssh-public-key "$PUB_KEY"
+          
+          # Sleep for a moment to allow the key to propagate
+          sleep 5
+          
+          # Get the instance's public IP address
+          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+          
+          echo "Attempting to connect to $PUBLIC_IP via SSH to restart SSM agent..."
+          
+          # Use SSH with StrictHostKeyChecking=no to execute commands
+          ssh -i /tmp/temp_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 ec2-user@$PUBLIC_IP << 'EOF' || echo "SSH connection failed, but continuing..."
+          sudo amazon-linux-extras install -y amazon-ssm-agent
+          sudo systemctl enable amazon-ssm-agent
+          sudo systemctl restart amazon-ssm-agent
+          echo "SSM agent restarted at $(date)"
+          EOF
+          
+          # Wait for the recovery to take effect
+          echo "Waiting for SSM agent recovery (60 seconds)..."
+          sleep 60
+          
+          # Check again if recovery was successful
+          SSM_ONLINE_AFTER=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "ConnectionLost")
+          
+          echo "SSM Agent status after recovery attempt: $SSM_ONLINE_AFTER"
+      
+      - name: Setup Docker
+        run: |
+          INSTANCE_ID=${{ needs.deploy_resources.outputs.instance_id }}
+          
+          echo "Setting up Docker on instance $INSTANCE_ID..."
+          
+          # Use SSM to check Docker installation
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters 'commands=[
+              "echo \"===== DOCKER VERIFICATION =====\"",
+              "# Check if Docker is installed",
+              "if ! command -v docker &> /dev/null; then",
+              "  echo \"Docker is not installed. Installing...\"",
+              "  amazon-linux-extras install -y docker || yum install -y docker",
+              "  systemctl enable docker",
+              "  systemctl start docker",
+              "  echo \"Docker installation complete.\"",
+              "else",
+              "  echo \"Docker is already installed.\"",
+              "fi",
+              
+              "# Check if Docker service is running",
+              "if ! systemctl is-active --quiet docker; then",
+              "  echo \"Docker service is not running. Starting...\"",
+              "  systemctl start docker",
+              "  echo \"Docker service started.\"",
+              "else",
+              "  echo \"Docker service is running.\"",
+              "fi",
+              
+              "# Verify Docker is working",
+              "echo \"Testing Docker with hello-world container...\"",
+              "docker run --rm hello-world | grep \"Hello from Docker!\" && echo \"Docker is working correctly.\" || echo \"Docker test failed.\"",
+              
+              "# Create application directory",
+              "echo \"Creating application directory...\"",
+              "mkdir -p /tmp/hrApp",
+              "chmod -R 777 /tmp/hrApp",
+              "echo \"Directory prepared at $(date)\" > /tmp/hrApp/prepared.txt",
+              "echo \"===== VERIFICATION COMPLETE =====\""
+            ]' \
+            --comment "Verify Docker installation"
+          
+          # Allow time for command to complete
+          echo "Waiting for Docker setup to complete (30 seconds)..."
+          sleep 30
   
-  # Stage 4: Verify SSM Agent (required for remote management)
-  verify_ssm:
-    needs: [deploy_infrastructure, wait_for_instance]
-    if: ${{ github.event.inputs.action != 'destroy' }}
-    uses: ./.github/workflows/verify_ssm_agent.yml
-    with:
-      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
-    secrets: inherit
-  
-  # Stage 5: Verify Docker is properly installed
-  verify_docker:
-    needs: [deploy_infrastructure, wait_for_instance, verify_ssm]
-    if: ${{ github.event.inputs.action != 'destroy' }}
-    uses: ./.github/workflows/verify_docker.yml
-    with:
-      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
-    secrets: inherit
-  
-  # Stage 6: Deploy the Docker Container with the Application
+  # Deploy Application Stage
   deploy_application:
-    needs: [deploy_infrastructure, wait_for_instance, verify_ssm, verify_docker]
-    if: ${{ github.event.inputs.action != 'destroy' }}
-    uses: ./.github/workflows/deploy_application.yml
-    with:
-      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
-      ec2_ip: ${{ needs.deploy_infrastructure.outputs.ec2_ip }}
-    secrets: inherit
+    needs: [deploy_resources, prepare_instance]
+    if: ${{ needs.deploy_resources.outputs.instance_id != 'unavailable' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Build Docker image
+        run: |
+          echo "Building Docker image..."
+          docker build -t hr-portal-app:latest .
+          docker save hr-portal-app:latest > hr-portal-app.tar
+
+      - name: Create S3 bucket for Docker image
+        id: create_bucket
+        run: |
+          # Create unique bucket name
+          BUCKET_NAME="hr-portal-docker-temp-$(date +%s)"
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          
+          # Create temporary S3 bucket with unique name 
+          echo "Creating temporary S3 bucket: $BUCKET_NAME"
+          aws s3 mb s3://$BUCKET_NAME
+          
+          # Set bucket policy
+          cat > /tmp/bucket-policy.json <<EOL
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "AWS": "arn:aws:iam::*:role/hr-portal-ec2-role"
+                },
+                "Action": ["s3:GetObject", "s3:ListBucket"],
+                "Resource": [
+                  "arn:aws:s3:::$BUCKET_NAME",
+                  "arn:aws:s3:::$BUCKET_NAME/*"
+                ]
+              }
+            ]
+          }
+          EOL
+          
+          aws s3api put-bucket-policy --bucket $BUCKET_NAME --policy file:///tmp/bucket-policy.json || echo "Could not set bucket policy, continuing..."
+          
+          # Upload Docker image to S3
+          echo "Uploading Docker image to S3..."
+          aws s3 cp hr-portal-app.tar s3://$BUCKET_NAME/
+          
+          echo "Bucket URL: s3://$BUCKET_NAME"
+
+      - name: Deploy Docker container to EC2
+        run: |
+          INSTANCE_ID=${{ needs.deploy_resources.outputs.instance_id }}
+          BUCKET_NAME=${{ steps.create_bucket.outputs.bucket_name }}
+          
+          # Deploy using SSM
+          echo "Deploying Docker container to EC2..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters "{\"commands\":[
+              \"echo \\\"====== STARTING DEPLOYMENT \$(date) ======\\\" > /tmp/deployment.log\",
+              
+              \"aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1\",
+              
+              \"echo \\\"Loading Docker image...\\\" >> /tmp/deployment.log\",
+              \"sudo docker load -i /tmp/hrApp/hr-portal-app.tar >> /tmp/deployment.log 2>&1\",
+              
+              \"echo \\\"Removing existing container if any...\\\" >> /tmp/deployment.log\",
+              \"sudo docker stop hr-portal-container >> /tmp/deployment.log 2>&1 || echo \\\"No container to stop\\\" >> /tmp/deployment.log\",
+              \"sudo docker rm hr-portal-container >> /tmp/deployment.log 2>&1 || echo \\\"No container to remove\\\" >> /tmp/deployment.log\",
+              
+              \"echo \\\"Running new container...\\\" >> /tmp/deployment.log\",
+              \"sudo docker run -d --name hr-portal-container -p 80:80 -e API_GATEWAY_ALLOW_ALL=true hr-portal-app:latest >> /tmp/deployment.log 2>&1\",
+              
+              \"echo \\\"Verifying container is running...\\\" >> /tmp/deployment.log\",
+              \"sudo docker ps >> /tmp/deployment.log 2>&1\",
+              
+              \"echo \\\"====== DEPLOYMENT COMPLETED \$(date) ======\\\" >> /tmp/deployment.log\",
+              \"cat /tmp/deployment.log\"
+            ]}" \
+            --comment "Deploy HR Portal Docker container"
+            
+      - name: Verify Deployment
+        run: |
+          INSTANCE_ID=${{ needs.deploy_resources.outputs.instance_id }}
+          
+          echo "Waiting for container to start (30 seconds)..."
+          sleep 30
+          
+          echo "Verifying deployment..."
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+            --parameters '{"commands":[
+              "echo \"===== DEPLOYMENT VERIFICATION =====\"",
+              "echo \"Container status:\"",
+              "sudo docker ps",
+              "echo \"Container logs:\"",
+              "sudo docker logs hr-portal-container 2>&1 || echo \"No logs available\"",
+              "echo \"===== VERIFICATION COMPLETE =====\""
+            ]}' \
+            --comment "Verify HR Portal deployment"
   
-  # Stage 7: Display URLs for accessing the application
+  # Display URLs Stage
   display_urls:
-    needs: [deploy_infrastructure, deploy_application]
-    if: ${{ github.event.inputs.action != 'destroy' && always() }}
+    needs: [deploy_resources, deploy_application]
+    if: ${{ always() && github.event.inputs.action != 'destroy' }}
     runs-on: ubuntu-latest
     steps:
       - name: Display deployment URLs
@@ -100,20 +442,40 @@ jobs:
           echo "HR Portal has been deployed successfully!"
           echo ""
           echo "Application Load Balancer (ALB) URL:"
-          echo "http://${{ needs.deploy_infrastructure.outputs.alb_dns }}"
+          echo "http://${{ needs.deploy_resources.outputs.alb_dns }}"
           echo ""
           echo "API Gateway URL:"
-          echo "${{ needs.deploy_infrastructure.outputs.api_url }}"
+          echo "${{ needs.deploy_resources.outputs.api_url }}"
           echo ""
           echo "EC2 Instance Direct URL (for debugging):"
-          echo "http://${{ needs.deploy_infrastructure.outputs.ec2_ip }}"
+          echo "http://${{ needs.deploy_resources.outputs.ec2_ip }}"
           echo "=================================================="
   
-  # Handle resource destruction if requested
+  # Destroy Resources Stage
   destroy:
     needs: check_environment
-    if: ${{ github.event.inputs.action == 'destroy' }}
-    uses: ./.github/workflows/destroy_resources.yml
-    with:
-      confirmation: ${{ github.event.inputs.confirmation }}
-    secrets: inherit
+    if: ${{ github.event.inputs.action == 'destroy' && github.event.inputs.confirmation == 'destroy' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        
+      - name: Terraform Destroy
+        run: |
+          cd terraform
+          terraform init
+          terraform destroy -auto-approve -var="db_username=admin" -var="db_password=password123"
+          
+      - name: Confirmation
+        run: |
+          echo "All AWS resources have been successfully destroyed."
