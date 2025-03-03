@@ -32,7 +32,7 @@ resource "aws_instance" "hr_portal_ec2" {
     # Install AWS CLI first for SSM registration
     echo "Installing AWS CLI..."
     yum install -y aws-cli
-    
+    sudo yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
     # Configure AWS CLI with the instance region
     echo "Configuring AWS CLI default region..."
     mkdir -p /root/.aws
