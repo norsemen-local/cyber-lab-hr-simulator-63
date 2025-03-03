@@ -4,10 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Navigate, useNavigate } from "react-router-dom";
-import { login, getCurrentUser, setCurrentUser } from "../services/authService";
+import { getCurrentUser, setCurrentUser } from "../services/authService";
 import { useToast } from "@/components/ui/use-toast";
 import { LogIn, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+// API Gateway base URL would typically come from environment variables
+const API_GATEWAY_URL = "https://api-gateway-endpoint.execute-api.region.amazonaws.com/prod";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -22,7 +25,7 @@ const Login = () => {
     return <Navigate to="/" />;
   }
   
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Email validation is now bypassed by default - no validation check
@@ -33,28 +36,58 @@ const Login = () => {
     const demoQuery = `SELECT * FROM users WHERE email='${email}' AND password='${password}'`;
     setSqlQuery(demoQuery);
     
-    // Simulate API call delay
-    setTimeout(() => {
-      // The backend doesn't validate the email format - it passes it directly to the query
-      const user = login(email, password);
+    try {
+      // Make an API call through the API Gateway
+      const response = await fetch(`${API_GATEWAY_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          email,
+          password,
+          // Send the raw query string to the backend - this preserves the SQLi vulnerability
+          queryString: demoQuery 
+        }),
+      });
       
-      if (user) {
-        setCurrentUser(user);
-        toast({
-          title: "Logged in successfully",
-          description: `Welcome back, ${user.name}!`,
-        });
-        navigate("/");
-      } else {
-        toast({
-          title: "Login failed",
-          description: "Invalid email or password",
-          variant: "destructive",
-        });
-      }
-      
+      // For demo purposes, we'll simulate the backend response
+      // In a real app, we would handle the actual response from the API
+      setTimeout(() => {
+        // Simulate the API Gateway response
+        // The backend would still be vulnerable to SQLi via the raw query
+        const responseData = {
+          success: email.includes("'") || email === "admin@example.com",
+          user: email.includes("'") || email === "admin@example.com" ? 
+            { id: 1, name: "John Doe", email: "john@example.com", role: "employee", avatar: "/placeholder.svg" } : null
+        };
+        
+        if (responseData.success && responseData.user) {
+          setCurrentUser(responseData.user);
+          toast({
+            title: "Logged in successfully",
+            description: `Welcome back, ${responseData.user.name}!`,
+          });
+          navigate("/");
+        } else {
+          toast({
+            title: "Login failed",
+            description: "Invalid email or password",
+            variant: "destructive",
+          });
+        }
+        
+        setLoading(false);
+      }, 1000);
+    } catch (error) {
+      console.error("Login error:", error);
+      toast({
+        title: "Login failed",
+        description: "An error occurred during login via API Gateway",
+        variant: "destructive",
+      });
       setLoading(false);
-    }, 1000);
+    }
   };
   
   return (
