@@ -13,11 +13,19 @@ interface StatCardProps {
     isPositive: boolean;
   };
   className?: string;
+  onClick?: () => void;
 }
 
-const StatCard = ({ title, value, icon, description, trend, className }: StatCardProps) => {
+const StatCard = ({ title, value, icon, description, trend, className, onClick }: StatCardProps) => {
   return (
-    <Card className={cn("border-none shadow-md bg-white/80 backdrop-blur-sm hover:shadow-lg transition-all", className)}>
+    <Card 
+      className={cn(
+        "border-none shadow-md bg-white/80 backdrop-blur-sm hover:shadow-lg transition-all", 
+        onClick ? "cursor-pointer" : "",
+        className
+      )}
+      onClick={onClick}
+    >
       <CardContent className="p-6">
         <div className="flex justify-between items-start">
           <div>

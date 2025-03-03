@@ -81,24 +81,31 @@ console.log(`SELECT * FROM users WHERE username='${username}' AND password='${pa
 
 ### 2. Server-Side Request Forgery (SSRF)
 
-The file upload system is vulnerable to SSRF:
+The document upload system is vulnerable to SSRF:
 
 ```javascript
-// Example vulnerable endpoint
-console.log(`/api/upload?url=s3://employee-bucket/${currentUser?.id}/${file.name}`);
+// Document upload page contains the vulnerability
+// The URL input field allows an attacker to modify the destination URL
+const handleUpload = async () => {
+  // Vulnerable URL construction from user input
+  console.log(`Uploading to: ${uploadUrl}/${selectedFile.name}`);
+  // The application will attempt to connect to this URL
+}
 ```
 
 #### Exploitation Step-by-Step:
 
 1. Log in to the application
-2. Navigate to the document upload page
-3. Select a file to upload
-4. Intercept the request with a proxy tool like Burp Suite
-5. Modify the URL parameter to point to internal resources:
+2. Navigate to the Document Upload page (`/documents`)
+3. Select any file to upload
+4. Modify the "Upload Destination URL" field to point to internal resources:
    ```
-   /api/upload?url=http://169.254.169.254/latest/meta-data/
+   http://169.254.169.254/latest/meta-data/
    ```
-6. Observe the response which reveals EC2 metadata
+5. Click the "Upload Document" button
+6. The application will attempt to connect to the AWS metadata service
+
+This vulnerability exists because the application doesn't validate the URL scheme and allows the attacker to connect to internal resources that shouldn't be accessible from the internet.
 
 #### Exploiting SSRF to Connect to Other EC2 Instances
 
@@ -106,7 +113,7 @@ After exploiting the SSRF vulnerability, you can use the EC2 instance's IAM role
 
 1. **Access the EC2 Instance Metadata Service**:
    ```
-   /api/upload?url=http://169.254.169.254/latest/meta-data/iam/security-credentials/hr-portal-ec2-role
+   http://169.254.169.254/latest/meta-data/iam/security-credentials/hr-portal-ec2-role
    ```
    This will return temporary AWS credentials (access key, secret key, token).
 
@@ -140,6 +147,8 @@ After exploiting the SSRF vulnerability, you can use the EC2 instance's IAM role
    ```
 
 This attack works because the EC2 instance has been granted IAM permissions to connect to other instances without requiring additional credentials.
+
+**Mitigation (for learning):** Validate and sanitize all user input. Implement URL scheme whitelisting and restrict connections to authorized destinations only.
 
 ---
 

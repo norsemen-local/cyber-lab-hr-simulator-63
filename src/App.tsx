@@ -7,6 +7,10 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
+import Profile from "./pages/Profile";
+import Team from "./pages/Team";
+import TimeManagement from "./pages/TimeManagement";
+import DocumentUpload from "./pages/DocumentUpload";
 import Footer from "./components/Footer";
 import { useEffect } from "react";
 
@@ -28,6 +32,12 @@ const App = () => {
               <Routes>
                 <Route path="/" element={<Index />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/profile/:tab" element={<Profile />} />
+                <Route path="/team" element={<Team />} />
+                <Route path="/team/:tab" element={<Team />} />
+                <Route path="/time/*" element={<TimeManagement />} />
+                <Route path="/documents" element={<DocumentUpload />} />
                 {/* Redirect /register to /login */}
                 <Route path="/register" element={<Navigate to="/login" />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

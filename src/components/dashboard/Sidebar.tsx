@@ -19,26 +19,43 @@ import {
   HelpCircle,
   Building2
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { logout } from "../../services/authService";
 import { useToast } from "@/components/ui/use-toast";
+
+interface SubItem {
+  label: string;
+  path: string;
+}
 
 interface MenuItemProps {
   icon: React.ReactNode;
   label: string;
-  onClick?: () => void;
-  active?: boolean;
-  subItems?: { label: string; onClick?: () => void }[];
+  path?: string;
+  subItems?: SubItem[];
+  activePathMatches?: string[];
 }
 
-const MenuItem = ({ icon, label, onClick, active, subItems }: MenuItemProps) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+const MenuItem = ({ icon, label, path, subItems, activePathMatches = [] }: MenuItemProps) => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [isExpanded, setIsExpanded] = useState(() => {
+    // Auto-expand submenu if a subitem is active
+    if (subItems) {
+      return subItems.some(item => location.pathname.startsWith(item.path));
+    }
+    return false;
+  });
+
+  const isActive = path ? 
+    location.pathname === path || location.pathname.startsWith(path) : 
+    activePathMatches.some(match => location.pathname.startsWith(match));
 
   const handleClick = () => {
     if (subItems && subItems.length > 0) {
       setIsExpanded(!isExpanded);
-    } else if (onClick) {
-      onClick();
+    } else if (path) {
+      navigate(path);
     }
   };
 
@@ -48,8 +65,8 @@ const MenuItem = ({ icon, label, onClick, active, subItems }: MenuItemProps) => 
         variant="ghost"
         onClick={handleClick}
         className={cn(
-          "w-full justify-start px-3 relative hover:bg-sidebar-accent",
-          active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "",
+          "w-full justify-start px-3 relative hover:bg-sidebar-accent hover:bg-gray-100",
+          isActive ? "bg-gray-100 text-purple-700 font-medium" : "",
         )}
       >
         <span className="flex items-center">
@@ -68,16 +85,23 @@ const MenuItem = ({ icon, label, onClick, active, subItems }: MenuItemProps) => 
       
       {subItems && isExpanded && (
         <div className="ml-10 mt-1 space-y-1">
-          {subItems.map((item, index) => (
-            <Button
-              key={index}
-              variant="ghost"
-              onClick={item.onClick}
-              className="w-full justify-start h-8 px-2 text-sm font-normal"
-            >
-              {item.label}
-            </Button>
-          ))}
+          {subItems.map((item, index) => {
+            const isSubItemActive = location.pathname === item.path || location.pathname.startsWith(item.path);
+            
+            return (
+              <Button
+                key={index}
+                variant="ghost"
+                onClick={() => navigate(item.path)}
+                className={cn(
+                  "w-full justify-start h-8 px-2 text-sm font-normal",
+                  isSubItemActive ? "bg-gray-100 text-purple-700 font-medium" : ""
+                )}
+              >
+                {item.label}
+              </Button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -132,80 +156,85 @@ const Sidebar = ({ isOpen, setIsOpen }: SidebarProps) => {
             <MenuItem 
               icon={<Home className="h-5 w-5" />} 
               label="Dashboard" 
-              active={true}
-              onClick={() => navigate("/")} 
+              path="/"
             />
             
             <MenuItem 
               icon={<User className="h-5 w-5" />} 
               label="My Profile" 
-              onClick={() => navigate("/profile")}
+              path="/profile"
               subItems={[
-                { label: "Personal Info", onClick: () => navigate("/profile/personal") },
-                { label: "Career History", onClick: () => navigate("/profile/career") },
-                { label: "Documents", onClick: () => navigate("/profile/documents") },
+                { label: "Personal Info", path: "/profile/personal" },
+                { label: "Career History", path: "/profile/career" },
+                { label: "Documents", path: "/profile/documents" },
               ]}
+              activePathMatches={["/profile"]}
             />
             
             <MenuItem 
               icon={<Calendar className="h-5 w-5" />} 
               label="Time Management" 
+              path="/time"
               subItems={[
-                { label: "Leave Requests", onClick: () => navigate("/time/leave") },
-                { label: "Attendance", onClick: () => navigate("/time/attendance") },
-                { label: "Timesheet", onClick: () => navigate("/time/timesheet") },
+                { label: "Leave Requests", path: "/time/leave" },
+                { label: "Attendance", path: "/time/attendance" },
+                { label: "Timesheet", path: "/time/timesheet" },
               ]}
+              activePathMatches={["/time"]}
             />
             
             <MenuItem 
               icon={<BarChart3 className="h-5 w-5" />} 
               label="Performance" 
+              path="/performance"
               subItems={[
-                { label: "Goals", onClick: () => navigate("/performance/goals") },
-                { label: "Reviews", onClick: () => navigate("/performance/reviews") },
-                { label: "Skills", onClick: () => navigate("/performance/skills") },
+                { label: "Goals", path: "/performance/goals" },
+                { label: "Reviews", path: "/performance/reviews" },
+                { label: "Skills", path: "/performance/skills" },
               ]}
+              activePathMatches={["/performance"]}
             />
             
             <MenuItem 
               icon={<FileText className="h-5 w-5" />} 
               label="Documents" 
-              onClick={() => navigate("/documents")}
+              path="/documents"
             />
             
             <MenuItem 
               icon={<Users className="h-5 w-5" />} 
               label="Team" 
-              onClick={() => navigate("/team")}
+              path="/team"
               subItems={[
-                { label: "Members", onClick: () => navigate("/team/members") },
-                { label: "Projects", onClick: () => navigate("/team/projects") },
-                { label: "Calendar", onClick: () => navigate("/team/calendar") },
+                { label: "Members", path: "/team/members" },
+                { label: "Projects", path: "/team/projects" },
+                { label: "Calendar", path: "/team/calendar" },
               ]}
+              activePathMatches={["/team"]}
             />
             
             <MenuItem 
               icon={<Bell className="h-5 w-5" />} 
               label="Notifications" 
-              onClick={() => navigate("/notifications")}
+              path="/notifications"
             />
             
             <MenuItem 
               icon={<Mail className="h-5 w-5" />} 
               label="Messages" 
-              onClick={() => navigate("/messages")}
+              path="/messages"
             />
             
             <MenuItem 
               icon={<Settings className="h-5 w-5" />} 
               label="Settings" 
-              onClick={() => navigate("/settings")}
+              path="/settings"
             />
             
             <MenuItem 
               icon={<HelpCircle className="h-5 w-5" />} 
               label="Help & Support" 
-              onClick={() => navigate("/help")}
+              path="/help"
             />
           </div>
         </ScrollArea>
