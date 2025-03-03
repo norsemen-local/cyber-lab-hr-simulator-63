@@ -88,3 +88,63 @@ resource "aws_instance" "hr_portal_ec2" {
 
   depends_on = [aws_internet_gateway.igw]
 }
+
+# Jenkins EC2 Instance
+resource "aws_instance" "jenkins_ec2" {
+  ami                    = var.ec2_ami_id
+  instance_type          = "t3.medium"  # Medium instance for Jenkins
+  subnet_id              = aws_subnet.public_subnet.id
+  vpc_security_group_ids = [aws_security_group.jenkins_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+
+  user_data = <<-EOF
+    #!/bin/bash
+    # Make sure script runs with proper permissions
+    set -ex
+    
+    # Log all commands for debugging
+    exec > >(tee /var/log/user-data.log) 2>&1
+    echo "Starting Jenkins setup at $(date)..."
+    
+    # Update system packages
+    yum update -y
+    
+    # Install Java (required for Jenkins)
+    amazon-linux-extras install -y java-openjdk11
+    
+    # Install and start SSM Agent
+    yum install -y amazon-ssm-agent
+    systemctl enable amazon-ssm-agent
+    systemctl start amazon-ssm-agent
+    
+    # Install Jenkins
+    wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+    rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+    yum install -y jenkins
+    
+    # Enable and start Jenkins service
+    systemctl enable jenkins
+    systemctl start jenkins
+    
+    # Install Docker
+    amazon-linux-extras install -y docker
+    systemctl enable docker
+    systemctl start docker
+    
+    # Add jenkins user to docker group
+    usermod -aG docker jenkins
+    usermod -aG docker ec2-user
+    
+    # Restart Jenkins to apply group changes
+    systemctl restart jenkins
+    
+    # Create a file to indicate script completion
+    echo "Jenkins setup completed successfully at $(date)!" > /tmp/jenkins-setup-complete.txt
+  EOF
+
+  tags = merge(local.common_tags, {
+    Name = "Demo-Jenkins"
+  })
+
+  depends_on = [aws_internet_gateway.igw]
+}

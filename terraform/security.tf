@@ -1,4 +1,3 @@
-
 # Security Group for EC2
 resource "aws_security_group" "ec2_sg" {
   name        = "hr-portal-ec2-sg"
@@ -42,6 +41,70 @@ resource "aws_security_group" "ec2_sg" {
 
   tags = merge(local.common_tags, {
     Name = "hr-portal-ec2-sg"
+  })
+}
+
+# Security Group for Jenkins
+resource "aws_security_group" "jenkins_sg" {
+  name        = "demo-jenkins-sg"
+  description = "Security group for Jenkins EC2 instance"
+  vpc_id      = aws_vpc.hr_portal_vpc.id
+
+  # Allow SSH access
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SSH access"
+  }
+
+  # Allow Jenkins web interface access
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Jenkins web interface"
+  }
+
+  # Allow Jenkins JNLP access
+  ingress {
+    from_port   = 50000
+    to_port     = 50000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Jenkins JNLP"
+  }
+
+  # Allow HTTP access
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTP access"
+  }
+
+  # Allow HTTPS access
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS access"
+  }
+
+  # Allow all outbound traffic
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "demo-jenkins-sg"
   })
 }
 
