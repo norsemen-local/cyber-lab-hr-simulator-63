@@ -46,6 +46,29 @@ resource "aws_iam_policy" "ec2_s3_policy" {
   tags = local.common_tags
 }
 
+# IAM Policy for Lambda functions
+resource "aws_iam_policy" "jenkins_lambda_policy" {
+  name        = "jenkins-lambda-policy"
+  description = "Policy allowing Jenkins to create and invoke Lambda functions"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "lambda:CreateFunction",
+          "lambda:InvokeFunction",
+          "iam:PassRole"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
 # Attach policies to role
 resource "aws_iam_role_policy_attachment" "ec2_ssh_policy_attachment" {
   role       = aws_iam_role.ec2_role.name
@@ -55,6 +78,12 @@ resource "aws_iam_role_policy_attachment" "ec2_ssh_policy_attachment" {
 resource "aws_iam_role_policy_attachment" "ec2_s3_policy_attachment" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = aws_iam_policy.ec2_s3_policy.arn
+}
+
+# Attach Lambda policy to Jenkins EC2 role
+resource "aws_iam_role_policy_attachment" "jenkins_lambda_policy_attachment" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = aws_iam_policy.jenkins_lambda_policy.arn
 }
 
 # For accessing SSM (Session Manager) if needed
