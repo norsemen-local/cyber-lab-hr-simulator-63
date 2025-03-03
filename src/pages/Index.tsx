@@ -8,15 +8,24 @@ import DocumentsCard from "../components/dashboard/DocumentsCard";
 import LeaveRequestsCard from "../components/dashboard/LeaveRequestsCard";
 import HRSettingsCard from "../components/dashboard/HRSettingsCard";
 import TeamManagementCard from "../components/dashboard/TeamManagementCard";
+import { useEffect } from "react";
 
 const Index = () => {
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
   
-  // If user is not logged in, redirect to login
+  useEffect(() => {
+    console.log("Index page loaded", { currentUser });
+    // If user is not logged in, redirect to login
+    if (!currentUser) {
+      console.log("No user found, redirecting to login");
+      navigate("/login");
+    }
+  }, [currentUser, navigate]);
+  
+  // Show a loading state if redirecting
   if (!currentUser) {
-    navigate("/login");
-    return null;
+    return <div className="p-8 text-center">Loading...</div>;
   }
   
   return (
