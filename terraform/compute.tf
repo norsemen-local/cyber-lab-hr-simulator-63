@@ -117,29 +117,61 @@ resource "aws_instance" "jenkins_ec2" {
     systemctl enable amazon-ssm-agent
     systemctl start amazon-ssm-agent
     
-    # Install Jenkins
-    wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
-    rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
-    yum install -y jenkins
+    # Install Jenkins 2.32.1 directly (not using Docker)
+    echo "Installing Jenkins 2.32.1..."
+    wget -O /tmp/jenkins.war https://updates.jenkins.io/download/war/2.32.1/jenkins.war
     
-    # Enable and start Jenkins service
+    # Install required dependencies for Jenkins
+    yum install -y fontconfig
+    
+    # Create Jenkins directory structure
+    mkdir -p /var/lib/jenkins
+    mkdir -p /var/log/jenkins
+    
+    # Create Jenkins user and set permissions
+    useradd -d /var/lib/jenkins jenkins
+    chown -R jenkins:jenkins /var/lib/jenkins
+    chown -R jenkins:jenkins /var/log/jenkins
+    
+    # Create systemd service for Jenkins
+    cat > /etc/systemd/system/jenkins.service <<EOL
+[Unit]
+Description=Jenkins Automation Server
+After=network.target
+
+[Service]
+Type=simple
+User=jenkins
+ExecStart=/bin/java -Dhudson.model.DirectoryBrowserSupport.CSP= -jar /tmp/jenkins.war --httpPort=8080
+Restart=on-failure
+Environment="JENKINS_HOME=/var/lib/jenkins"
+
+[Install]
+WantedBy=multi-user.target
+EOL
+    
+    # Reload systemd, enable and start Jenkins
+    systemctl daemon-reload
     systemctl enable jenkins
     systemctl start jenkins
     
-    # Install Docker
-    amazon-linux-extras install -y docker
-    systemctl enable docker
-    systemctl start docker
+    # Wait for Jenkins to start and then get the initial admin password
+    echo "Waiting for Jenkins to start..."
+    sleep 30
     
-    # Add jenkins user to docker group
-    usermod -aG docker jenkins
-    usermod -aG docker ec2-user
+    # Save the initial admin password to a file for easy access
+    if [ -f /var/lib/jenkins/secrets/initialAdminPassword ]; then
+        echo "Initial Jenkins admin password:" > /tmp/jenkins-password.txt
+        cat /var/lib/jenkins/secrets/initialAdminPassword >> /tmp/jenkins-password.txt
+    else
+        echo "Initial admin password file not found - Jenkins may still be starting" > /tmp/jenkins-password.txt
+    fi
     
-    # Restart Jenkins to apply group changes
-    systemctl restart jenkins
+    # Set permissions for ec2-user
+    usermod -aG jenkins ec2-user
     
     # Create a file to indicate script completion
-    echo "Jenkins setup completed successfully at $(date)!" > /tmp/jenkins-setup-complete.txt
+    echo "Jenkins 2.32.1 setup completed successfully at $(date)!" > /tmp/jenkins-setup-complete.txt
   EOF
 
   tags = merge(local.common_tags, {
