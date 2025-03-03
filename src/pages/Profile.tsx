@@ -1,93 +1,58 @@
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
-import DashboardWithSidebar from "../components/dashboard/DashboardWithSidebar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useProfile } from "../hooks/useProfile";
-import ProfileSidebar from "../components/profile/ProfileSidebar";
-import SensitiveInfoCard from "../components/profile/SensitiveInfoCard";
+import DashboardWithSidebar from "../components/dashboard/DashboardWithSidebar";
+import { Card } from "@/components/ui/card";
 import PersonalInfoTab from "../components/profile/PersonalInfoTab";
 import CareerHistoryTab from "../components/profile/CareerHistoryTab";
 import DocumentsTab from "../components/profile/DocumentsTab";
+import ProfileSidebar from "../components/profile/ProfileSidebar";
+import { useProfile } from "../hooks/useProfile";
 
 const Profile = () => {
-  const { tab } = useParams<{ tab: string }>();
-  const [activeTab, setActiveTab] = useState("personal");
-  
-  const {
-    userProfile,
-    careerHistory,
-    documents,
-    isAddingExperience,
-    setIsAddingExperience,
-    newExperience,
-    handleChange,
-    handleSaveChanges,
-    handleNewExperienceChange,
-    handleAddExperience,
-    handleDeleteExperience
-  } = useProfile();
+  const { tab } = useParams();
+  const activeTab = tab || "personal";
+  const { profile, loading, updateProfile } = useProfile();
 
-  // Set the active tab based on the URL param
-  useEffect(() => {
-    if (tab) {
-      setActiveTab(tab);
-    }
-  }, [tab]);
+  if (loading) {
+    return (
+      <DashboardWithSidebar>
+        <div className="flex justify-center items-center h-64">
+          <p>Loading profile data...</p>
+        </div>
+      </DashboardWithSidebar>
+    );
+  }
 
   return (
     <DashboardWithSidebar>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">My Profile</h1>
-        <p className="text-gray-600">Manage your personal and career information</p>
-      </div>
-
-      <div className="grid grid-cols-12 gap-6">
-        <div className="col-span-12 lg:col-span-4">
-          <ProfileSidebar 
-            userProfile={userProfile} 
-            setActiveTab={setActiveTab} 
-          />
-          
-          <SensitiveInfoCard 
-            userProfile={userProfile} 
-            handleChange={handleChange} 
-            handleSaveChanges={handleSaveChanges} 
-          />
+      <div className="flex flex-col md:flex-row gap-6">
+        <div className="md:w-1/4">
+          <ProfileSidebar profile={profile} />
         </div>
-        
-        <div className="col-span-12 lg:col-span-8">
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="w-full border-b rounded-none bg-transparent mb-6">
-              <TabsTrigger value="personal" className="rounded-none">Personal Info</TabsTrigger>
-              <TabsTrigger value="career" className="rounded-none">Career History</TabsTrigger>
-              <TabsTrigger value="documents" className="rounded-none">Documents</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="personal">
-              <PersonalInfoTab 
-                userProfile={userProfile} 
-                handleChange={handleChange} 
-                handleSaveChanges={handleSaveChanges} 
-              />
-            </TabsContent>
-            
-            <TabsContent value="career">
-              <CareerHistoryTab 
-                careerHistory={careerHistory}
-                handleDeleteExperience={handleDeleteExperience}
-                handleAddExperience={handleAddExperience}
-                newExperience={newExperience}
-                handleNewExperienceChange={handleNewExperienceChange}
-                isAddingExperience={isAddingExperience}
-                setIsAddingExperience={setIsAddingExperience}
-              />
-            </TabsContent>
-            
-            <TabsContent value="documents">
-              <DocumentsTab documents={documents} />
-            </TabsContent>
-          </Tabs>
+        <div className="md:w-3/4">
+          <Card className="p-6">
+            <Tabs value={activeTab} className="w-full">
+              <TabsList className="mb-6">
+                <TabsTrigger value="personal">Personal Info</TabsTrigger>
+                <TabsTrigger value="career">Career History</TabsTrigger>
+                <TabsTrigger value="documents">Documents</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="personal" className="space-y-4">
+                <PersonalInfoTab profile={profile} updateProfile={updateProfile} />
+              </TabsContent>
+              
+              <TabsContent value="career" className="space-y-4">
+                <CareerHistoryTab profile={profile} updateProfile={updateProfile} />
+              </TabsContent>
+              
+              <TabsContent value="documents" className="space-y-4">
+                <DocumentsTab profile={profile} />
+              </TabsContent>
+            </Tabs>
+          </Card>
         </div>
       </div>
     </DashboardWithSidebar>

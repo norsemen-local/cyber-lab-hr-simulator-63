@@ -1,12 +1,12 @@
 
-import { useState, ReactNode } from "react";
+import { useState, ReactNode, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
 import Sidebar from "./Sidebar";
 import { cn } from "@/lib/utils";
 import { getCurrentUser } from "../../services/authService";
 import { useNavigate } from "react-router-dom";
-import { useEffect } from "react";
+import AnnouncementBanner from "./AnnouncementBanner";
 
 interface DashboardWithSidebarProps {
   children: ReactNode;
@@ -16,6 +16,16 @@ const DashboardWithSidebar = ({ children }: DashboardWithSidebarProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
+  
+  // Example announcement data - in a real app this might come from an API
+  const [announcements] = useState([
+    {
+      id: "welcome-2023",
+      message: "Welcome to TechPro Solutions HR Portal - Your one-stop solution for all HR needs!",
+      variant: "info" as const,
+      dismissible: true,
+    },
+  ]);
   
   useEffect(() => {
     if (!currentUser) {
@@ -61,6 +71,17 @@ const DashboardWithSidebar = ({ children }: DashboardWithSidebarProps) => {
           </div>
           
           <div className="max-w-6xl mx-auto">
+            {/* Display announcements at the top of the dashboard */}
+            {announcements.map((announcement) => (
+              <AnnouncementBanner
+                key={announcement.id}
+                id={announcement.id}
+                message={announcement.message}
+                variant={announcement.variant}
+                dismissible={announcement.dismissible}
+              />
+            ))}
+            
             {children}
           </div>
         </div>
