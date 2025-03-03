@@ -7,7 +7,6 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { login, getCurrentUser, setCurrentUser } from "../services/authService";
 import { useToast } from "@/components/ui/use-toast";
 import { LogIn, AlertTriangle } from "lucide-react";
-import { Link } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Login = () => {
@@ -145,12 +144,6 @@ const Login = () => {
             </form>
           </CardContent>
           <CardFooter className="flex-col space-y-2">
-            <div className="text-center w-full">
-              <span className="text-sm text-muted-foreground">Don't have an account? </span>
-              <Link to="/register" className="text-sm font-medium text-primary hover:underline">
-                Register
-              </Link>
-            </div>
             <p className="text-xs text-center w-full text-gray-500">
               This application is deliberately vulnerable for security training purposes.
             </p>
