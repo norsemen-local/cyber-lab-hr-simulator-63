@@ -31,7 +31,7 @@ jobs:
           
           if [ "${{ inputs.alb_dns }}" != "unavailable" ]; then
             echo "Application Load Balancer (ALB) URL:"
-            echo "http://${{ inputs.alb_dns }}"
+            echo "http://${{ inputs.alb_dns }}/login"
           else
             echo "ALB URL: Not available"
           fi
