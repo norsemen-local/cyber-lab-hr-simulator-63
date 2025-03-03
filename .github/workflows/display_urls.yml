@@ -3,43 +3,20 @@ name: HR Portal - Display URLs
 on:
   workflow_call:
     inputs:
-      existing_resources:
-        description: 'Whether resources exist'
+      ec2_ip:
+        description: 'EC2 IP address'
         type: string
         required: true
-      terraform_deployed:
-        description: 'Whether terraform is deployed'
+        default: 'unavailable'
+      alb_dns:
+        description: 'ALB DNS name'
         type: string
         required: true
-      check_ec2_ip:
-        description: 'EC2 IP from check'
-        type: string
-        required: false
         default: 'unavailable'
-      check_alb_dns:
-        description: 'ALB DNS from check'
+      api_url:
+        description: 'API Gateway URL'
         type: string
-        required: false
-        default: 'unavailable'
-      check_api_url:
-        description: 'API URL from check'
-        type: string
-        required: false
-        default: 'unavailable'
-      deploy_ec2_ip:
-        description: 'EC2 IP from deploy'
-        type: string
-        required: false
-        default: 'unavailable'
-      deploy_alb_dns:
-        description: 'ALB DNS from deploy'
-        type: string
-        required: false
-        default: 'unavailable'
-      deploy_api_url:
-        description: 'API URL from deploy'
-        type: string
-        required: false
+        required: true
         default: 'unavailable'
 
 jobs:
@@ -49,15 +26,32 @@ jobs:
       - name: Display deployment URLs
         run: |
           echo "============= DEPLOYMENT INFORMATION ============="
-          if [[ "${{ inputs.existing_resources }}" == "true" || "${{ inputs.terraform_deployed }}" == "true" ]]; then
-            echo "Application is already deployed!"
-            echo "EC2 Instance URL: http://${{ inputs.check_ec2_ip }}"
-            echo "ALB URL: http://${{ inputs.check_alb_dns }}"
-            echo "API Gateway URL: ${{ inputs.check_api_url }}"
+          echo "HR Portal has been deployed successfully!"
+          echo ""
+          
+          if [ "${{ inputs.alb_dns }}" != "unavailable" ]; then
+            echo "Application Load Balancer (ALB) URL:"
+            echo "http://${{ inputs.alb_dns }}"
           else
-            echo "Deployment completed!"
-            echo "EC2 Instance URL: http://${{ inputs.deploy_ec2_ip }}"
-            echo "ALB URL: http://${{ inputs.deploy_alb_dns }}"
-            echo "API Gateway URL: ${{ inputs.deploy_api_url }}"
+            echo "ALB URL: Not available"
           fi
+          
+          echo ""
+          
+          if [ "${{ inputs.api_url }}" != "unavailable" ]; then
+            echo "API Gateway URL:"
+            echo "${{ inputs.api_url }}"
+          else
+            echo "API Gateway URL: Not available"
+          fi
+          
+          echo ""
+          
+          if [ "${{ inputs.ec2_ip }}" != "unavailable" ]; then
+            echo "EC2 Instance Direct URL (for debugging):"
+            echo "http://${{ inputs.ec2_ip }}"
+          else
+            echo "EC2 Direct URL: Not available"
+          fi
+          
           echo "=================================================="

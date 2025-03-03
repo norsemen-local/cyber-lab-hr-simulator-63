@@ -17,39 +17,103 @@ on:
         description: 'Type "destroy" to confirm deletion of all resources'
         required: false
         type: string
+      force_deploy:
+        description: 'Force deployment even if resources exist'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
-  check:
-    uses: ./.github/workflows/check_resources.yml
+  # Stage 1: Check Environment and Existing Resources
+  check_environment:
+    uses: ./.github/workflows/check_environment.yml
     secrets: inherit
   
-  deploy:
-    needs: check
-    if: ${{ github.event.inputs.action != 'destroy' }}
-    uses: ./.github/workflows/deploy_resources.yml
+  # Ask for confirmation if resources already exist
+  confirmation_required:
+    needs: check_environment
+    if: ${{ needs.check_environment.outputs.resources_exist == 'true' && github.event.inputs.force_deploy != 'true' && github.event.inputs.action != 'destroy' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resources already exist
+        run: |
+          echo "::error::AWS resources for HR Portal already exist!"
+          echo "::error::To proceed with deployment and potentially overwrite existing resources, rerun this workflow with 'Force deployment' option enabled."
+          echo "::error::Alternatively, use the 'destroy' action first to clean up existing resources."
+          exit 1
+  
+  # Stage 2: Deploy Infrastructure (if environment check passed)
+  deploy_infrastructure:
+    needs: [check_environment]
+    if: ${{ (needs.check_environment.outputs.resources_exist == 'false' || github.event.inputs.force_deploy == 'true') && github.event.inputs.action != 'destroy' }}
+    uses: ./.github/workflows/deploy_infrastructure.yml
     with:
       action: ${{ github.event.inputs.action }}
     secrets: inherit
   
+  # Stage 3: Wait for Infrastructure to be ready
+  wait_for_instance:
+    needs: deploy_infrastructure
+    if: ${{ github.event.inputs.action != 'destroy' }}
+    uses: ./.github/workflows/wait_for_instance.yml
+    with:
+      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
+    secrets: inherit
+  
+  # Stage 4: Verify SSM Agent (required for remote management)
+  verify_ssm:
+    needs: [deploy_infrastructure, wait_for_instance]
+    if: ${{ github.event.inputs.action != 'destroy' }}
+    uses: ./.github/workflows/verify_ssm_agent.yml
+    with:
+      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
+    secrets: inherit
+  
+  # Stage 5: Verify Docker is properly installed
+  verify_docker:
+    needs: [deploy_infrastructure, wait_for_instance, verify_ssm]
+    if: ${{ github.event.inputs.action != 'destroy' }}
+    uses: ./.github/workflows/verify_docker.yml
+    with:
+      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
+    secrets: inherit
+  
+  # Stage 6: Deploy the Docker Container with the Application
+  deploy_application:
+    needs: [deploy_infrastructure, wait_for_instance, verify_ssm, verify_docker]
+    if: ${{ github.event.inputs.action != 'destroy' }}
+    uses: ./.github/workflows/deploy_application.yml
+    with:
+      instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
+      ec2_ip: ${{ needs.deploy_infrastructure.outputs.ec2_ip }}
+    secrets: inherit
+  
+  # Stage 7: Display URLs for accessing the application
+  display_urls:
+    needs: [deploy_infrastructure, deploy_application]
+    if: ${{ github.event.inputs.action != 'destroy' && always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display deployment URLs
+        run: |
+          echo "============= DEPLOYMENT INFORMATION ============="
+          echo "HR Portal has been deployed successfully!"
+          echo ""
+          echo "Application Load Balancer (ALB) URL:"
+          echo "http://${{ needs.deploy_infrastructure.outputs.alb_dns }}"
+          echo ""
+          echo "API Gateway URL:"
+          echo "${{ needs.deploy_infrastructure.outputs.api_url }}"
+          echo ""
+          echo "EC2 Instance Direct URL (for debugging):"
+          echo "http://${{ needs.deploy_infrastructure.outputs.ec2_ip }}"
+          echo "=================================================="
+  
+  # Handle resource destruction if requested
   destroy:
-    needs: check
+    needs: check_environment
     if: ${{ github.event.inputs.action == 'destroy' }}
     uses: ./.github/workflows/destroy_resources.yml
     with:
       confirmation: ${{ github.event.inputs.confirmation }}
-    secrets: inherit
-  
-  display_urls:
-    needs: [check, deploy]
-    if: ${{ always() && github.event.inputs.action != 'destroy' }}
-    uses: ./.github/workflows/display_urls.yml
-    with:
-      existing_resources: ${{ needs.check.outputs.existing_resources }}
-      terraform_deployed: ${{ needs.check.outputs.terraform_deployed }}
-      check_ec2_ip: ${{ needs.check.outputs.ec2_ip }}
-      check_alb_dns: ${{ needs.check.outputs.alb_dns }}
-      check_api_url: ${{ needs.check.outputs.api_url }}
-      deploy_ec2_ip: ${{ needs.deploy.outputs.ec2_ip }}
-      deploy_alb_dns: ${{ needs.deploy.outputs.alb_dns }}
-      deploy_api_url: ${{ needs.deploy.outputs.api_url }}
     secrets: inherit

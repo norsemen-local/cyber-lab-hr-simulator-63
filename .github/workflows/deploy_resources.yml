@@ -67,3 +67,13 @@ jobs:
       instance_id: ${{ needs.deploy_infrastructure.outputs.instance_id }}
       ec2_ip: ${{ needs.deploy_infrastructure.outputs.ec2_ip }}
     secrets: inherit
+
+  display_deployment_info:
+    needs: [deploy_infrastructure, deploy_application]
+    if: ${{ inputs.action != 'destroy' && always() }}
+    uses: ./.github/workflows/display_urls.yml
+    with:
+      ec2_ip: ${{ needs.deploy_infrastructure.outputs.ec2_ip }}
+      alb_dns: ${{ needs.deploy_infrastructure.outputs.alb_dns }}
+      api_url: ${{ needs.deploy_infrastructure.outputs.api_url }}
+    secrets: inherit

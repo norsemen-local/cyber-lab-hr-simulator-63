@@ -25,85 +25,56 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
       
-      - name: Check and fix SSM Agent
+      - name: Verify SSM agent is working
         if: ${{ inputs.instance_id != 'unavailable' }}
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
           
-          echo "Checking SSM Agent status for instance $INSTANCE_ID..."
+          if [ "$INSTANCE_ID" == "unavailable" ]; then
+            echo "Instance ID not available. Skipping SSM verification."
+            exit 0
+          fi
           
-          # Check if instance is SSM managed
-          SSM_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[0].PingStatus" --output text 2>&1 || echo "NotFound")
-          echo "Current SSM status: $SSM_STATUS"
+          echo "Verifying SSM agent status on instance $INSTANCE_ID..."
           
-          if [ "$SSM_STATUS" == "NotFound" ] || [ "$SSM_STATUS" == "ConnectionLost" ]; then
-            echo "SSM Agent is not online. Attempting to restart via user data script..."
-            
-            # Generate a recovery script that will be executed on next boot
-            cat > /tmp/ssm-recovery.sh <<'EOF'
-#!/bin/bash
-# SSM Agent recovery script
-echo "Running SSM Agent recovery at $(date)" > /var/log/ssm-recovery.log
-# Stop services that might interfere
-systemctl stop amazon-ssm-agent
-# Remove existing SSM Agent state
-rm -rf /var/lib/amazon/ssm/ipc/
-# Make sure the SSM Agent is installed
-yum install -y amazon-ssm-agent
-# Configure SSM Agent with the right region
-echo '{
-  "Profile": "ssm",
-  "Region": "us-east-1"
-}' > /etc/amazon/ssm/amazon-ssm-agent.json
-# Restart SSM Agent
-systemctl enable amazon-ssm-agent
-systemctl restart amazon-ssm-agent
-systemctl status amazon-ssm-agent >> /var/log/ssm-recovery.log
-# Configure AWS CLI default region in case needed
-mkdir -p /root/.aws
-echo '[default]
-region = us-east-1' > /root/.aws/config
-# Mark completion
-echo "Recovery completed at $(date)" >> /var/log/ssm-recovery.log
-EOF
-            
-            # Send recovery script via user data
-            aws ec2 modify-instance-attribute \
-              --instance-id $INSTANCE_ID \
-              --attribute userData \
-              --value "$(base64 -w 0 /tmp/ssm-recovery.sh)"
-            
-            # Reboot the instance to apply new user data
-            echo "Rebooting instance to activate SSM recovery script..."
-            aws ec2 reboot-instances --instance-ids $INSTANCE_ID
-            
-            # Wait for instance to come back online
-            echo "Waiting for instance to reboot and come back online..."
-            sleep 90
-            
-            # Wait for SSM Agent to initialize
-            echo "Checking if SSM Agent is now online..."
-            timeout=300  # 5 minutes
-            interval=15  # 15 seconds
-            elapsed=0
-            
-            while [ $elapsed -lt $timeout ]; do
-              SSM_STATUS=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[0].PingStatus" --output text 2>&1 || echo "NotFound")
-              echo "Current SSM status: $SSM_STATUS"
-              
-              if [ "$SSM_STATUS" == "Online" ]; then
-                echo "SSM Agent is now online!"
-                break
-              fi
-              
-              sleep $interval
-              elapsed=$((elapsed + interval))
-              echo "Waited for $elapsed seconds..."
-            done
-            
-            if [ $elapsed -ge $timeout ]; then
-              echo "::warning::Failed to get SSM Agent online after recovery attempts. The deployment might fail."
-            fi
+          # Check if instance is already registered with SSM
+          SSM_ONLINE=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "ConnectionLost")
+          
+          echo "SSM Agent status: $SSM_ONLINE"
+          
+          # If SSM is working, we're done
+          if [ "$SSM_ONLINE" == "Online" ]; then
+            echo "SSM Agent is online and working properly."
+            exit 0
+          fi
+          
+          # Otherwise try to restart the SSM agent via user data script
+          echo "SSM Agent is not online. Attempting recovery..."
+          
+          # Try to recover the SSM agent by sending a custom command
+          # This command will try to restart the SSM agent
+          aws ec2 modify-instance-attribute --instance-id $INSTANCE_ID --attribute userData --value "$(cat <<EOF | base64
+          #!/bin/bash
+          echo "Attempting to recover SSM agent at $(date)" > /tmp/ssm-recovery.log
+          amazon-linux-extras install -y amazon-ssm-agent >> /tmp/ssm-recovery.log 2>&1
+          systemctl enable amazon-ssm-agent >> /tmp/ssm-recovery.log 2>&1
+          systemctl restart amazon-ssm-agent >> /tmp/ssm-recovery.log 2>&1
+          echo "SSM agent restarted at $(date)" >> /tmp/ssm-recovery.log
+          EOF
+          )"
+          
+          # Wait for the recovery to take effect
+          echo "Waiting for SSM agent recovery (120 seconds)..."
+          sleep 120
+          
+          # Check again if recovery was successful
+          SSM_ONLINE_AFTER=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "ConnectionLost")
+          
+          echo "SSM Agent status after recovery attempt: $SSM_ONLINE_AFTER"
+          
+          if [ "$SSM_ONLINE_AFTER" == "Online" ]; then
+            echo "SSM Agent recovery successful."
           else
-            echo "SSM Agent is already online, no recovery needed."
+            echo "SSM Agent recovery failed, but continuing with workflow."
+            echo "WARNING: Subsequent deployment steps may fail without SSM connectivity."
           fi

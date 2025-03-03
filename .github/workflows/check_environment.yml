@@ -1,0 +1,76 @@
+
+name: HR Portal - Check Environment
+on:
+  workflow_call:
+    outputs:
+      environment_ready:
+        description: "Whether the environment is ready for deployment"
+        value: ${{ jobs.check_environment.outputs.environment_ready }}
+      resources_exist:
+        description: "Whether resources already exist"
+        value: ${{ jobs.check_environment.outputs.resources_exist }}
+    secrets:
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+
+jobs:
+  check_environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment_ready: ${{ steps.check_aws_credentials.outputs.aws_configured }}
+      resources_exist: ${{ steps.check_existing_resources.outputs.resources_exist }}
+    
+    steps:
+      - name: Check AWS credentials
+        id: check_aws_credentials
+        run: |
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] || [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+            echo "AWS credentials are not configured properly."
+            echo "aws_configured=false" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "AWS credentials are configured."
+            echo "aws_configured=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Configure AWS credentials
+        if: steps.check_aws_credentials.outputs.aws_configured == 'true'
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+      
+      - name: Check for existing resources
+        id: check_existing_resources
+        if: steps.check_aws_credentials.outputs.aws_configured == 'true'
+        run: |
+          # Check for existing VPC
+          VPC_EXISTS=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=hr-portal-vpc" --query "Vpcs[].VpcId" --output text)
+          
+          # Check for existing EC2 instance
+          EC2_EXISTS=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" "Name=instance-state-name,Values=running,stopped,pending" --query "Reservations[].Instances[].InstanceId" --output text)
+          
+          # Check for existing RDS instance
+          RDS_EXISTS=$(aws rds describe-db-instances --query "DBInstances[?DBInstanceIdentifier=='hr-portal-db'].DBInstanceIdentifier" --output text || echo "")
+          
+          # Check for existing API Gateway
+          API_EXISTS=$(aws apigateway get-rest-apis --query "items[?name=='hr-portal-api'].id" --output text || echo "")
+          
+          # Check for existing ALB
+          ALB_EXISTS=$(aws elbv2 describe-load-balancers --query "LoadBalancers[?LoadBalancerName=='hr-portal-alb'].LoadBalancerName" --output text || echo "")
+          
+          if [ -n "$VPC_EXISTS" ] || [ -n "$EC2_EXISTS" ] || [ -n "$RDS_EXISTS" ] || [ -n "$API_EXISTS" ] || [ -n "$ALB_EXISTS" ]; then
+            echo "Some resources already exist in the environment:"
+            [ -n "$VPC_EXISTS" ] && echo "- VPC: $VPC_EXISTS"
+            [ -n "$EC2_EXISTS" ] && echo "- EC2: $EC2_EXISTS"
+            [ -n "$RDS_EXISTS" ] && echo "- RDS: $RDS_EXISTS"
+            [ -n "$API_EXISTS" ] && echo "- API Gateway: $API_EXISTS"
+            [ -n "$ALB_EXISTS" ] && echo "- ALB: $ALB_EXISTS"
+            echo "resources_exist=true" >> $GITHUB_OUTPUT
+          else
+            echo "No existing resources found. Environment is clean for deployment."
+            echo "resources_exist=false" >> $GITHUB_OUTPUT
+          fi

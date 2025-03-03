@@ -25,49 +25,57 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
       
-      - name: Test instance connectivity and Docker installation
+      - name: Test Docker installation and prepare environment
         if: ${{ inputs.instance_id != 'unavailable' }}
         run: |
           INSTANCE_ID=${{ inputs.instance_id }}
           
           if [ "$INSTANCE_ID" == "unavailable" ]; then
-            echo "Instance ID not available. Skipping connectivity test."
+            echo "Instance ID not available. Skipping Docker verification."
             exit 0
           fi
           
-          echo "Testing instance with SSM command..."
-          aws ssm send-command \
-            --document-name "AWS-RunShellScript" \
-            --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
-            --parameters 'commands=[
-              "echo \"SSM test successful\"",
-              "echo \"Checking Docker installation...\"",
-              "if ! command -v docker &> /dev/null; then",
-              "  echo \"Docker not found, installing...\"",
-              "  sudo amazon-linux-extras install -y docker || sudo yum install -y docker",
-              "  sudo systemctl enable docker",
-              "  sudo systemctl start docker",
-              "fi",
-              "docker --version",
-              "sudo systemctl status docker",
-              "echo \"Docker status: $?\""
-            ]' \
-            --comment "Testing SSM connectivity and Docker installation" || echo "SSM command failed. Continuing workflow."
-            
-          sleep 15
+          echo "Verifying Docker installation on instance $INSTANCE_ID..."
           
-          # Verify Docker is running with an additional check
-          echo "Verifying Docker is properly installed and running..."
+          # Use SSM to check Docker installation
           aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
             --parameters 'commands=[
-              "echo \"Running final Docker verification...\"",
-              "docker --version || echo \"Docker is not installed properly\"",
-              "sudo systemctl status docker || echo \"Docker service is not running properly\"",
-              "sudo systemctl restart docker || echo \"Failed to restart Docker\"",
-              "echo \"Docker verification complete\""
+              "echo \"===== DOCKER VERIFICATION =====\"",
+              "# Check if Docker is installed",
+              "if ! command -v docker &> /dev/null; then",
+              "  echo \"Docker is not installed. Installing...\"",
+              "  amazon-linux-extras install -y docker || yum install -y docker",
+              "  systemctl enable docker",
+              "  systemctl start docker",
+              "  echo \"Docker installation complete.\"",
+              "else",
+              "  echo \"Docker is already installed.\"",
+              "fi",
+              
+              "# Check if Docker service is running",
+              "if ! systemctl is-active --quiet docker; then",
+              "  echo \"Docker service is not running. Starting...\"",
+              "  systemctl start docker",
+              "  echo \"Docker service started.\"",
+              "else",
+              "  echo \"Docker service is running.\"",
+              "fi",
+              
+              "# Verify Docker is working",
+              "echo \"Testing Docker with hello-world container...\"",
+              "docker run --rm hello-world | grep \"Hello from Docker!\" && echo \"Docker is working correctly.\" || echo \"Docker test failed.\"",
+              
+              "# Create application directory",
+              "echo \"Creating application directory...\"",
+              "mkdir -p /tmp/hrApp",
+              "chmod -R 777 /tmp/hrApp",
+              "echo \"Directory prepared at $(date)\" > /tmp/hrApp/prepared.txt",
+              "echo \"===== VERIFICATION COMPLETE =====\""
             ]' \
-            --comment "Final Docker verification" || echo "SSM command failed. Continuing workflow."
-            
-          sleep 15
+            --comment "Verify Docker installation"
+          
+          # Allow time for command to complete
+          echo "Waiting for Docker verification to complete (30 seconds)..."
+          sleep 30
