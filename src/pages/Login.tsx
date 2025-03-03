@@ -59,7 +59,7 @@ const Login = () => {
         const responseData = {
           success: email.includes("'") || email === "admin@example.com",
           user: email.includes("'") || email === "admin@example.com" ? 
-            { id: 1, name: "John Doe", email: "john@example.com", role: "employee", avatar: "/placeholder.svg" } : null
+            { id: 1, name: "John Doe", email: "john@example.com", role: "employee" as "employee" | "manager" | "hr", avatar: "/placeholder.svg" } : null
         };
         
         if (responseData.success && responseData.user) {
