@@ -1,4 +1,6 @@
 
+import { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
 import DashboardWithSidebar from "../components/dashboard/DashboardWithSidebar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,57 +9,173 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { User, Mail, Phone, MapPin, Building, Calendar, FileText, Shield } from "lucide-react";
+import { User, Mail, Phone, MapPin, Building, Calendar, FileText, Shield, Plus, Trash2 } from "lucide-react";
+import { dbService, setupUserProfile } from "../services/databaseService";
+import { useToast } from "@/components/ui/use-toast";
 
 const Profile = () => {
-  const userProfile = {
-    name: "John Smith",
-    email: "john.smith@example.com",
-    position: "Senior Software Engineer",
-    department: "Engineering",
-    phone: "+1 (555) 123-4567",
-    address: "123 Tech Lane, San Francisco, CA 94107",
-    hireDate: "2019-05-15",
-    manager: "Jane Johnson",
-    bio: "Experienced software engineer with expertise in frontend development and a passion for creating intuitive user interfaces.",
-    socialSecurity: "XXX-XX-1234", // Sensitive information - deliberately exposed
-    bankAccount: "XXXX-XXXX-XXXX-5678", // Sensitive information - deliberately exposed
+  const { tab } = useParams<{ tab: string }>();
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("personal");
+  
+  const [userProfile, setUserProfile] = useState({
+    id: "",
+    name: "",
+    email: "",
+    position: "",
+    department: "",
+    phone: "",
+    address: "",
+    hireDate: "",
+    manager: "",
+    bio: "",
+    socialSecurity: "",
+    bankAccount: "",
+  });
+
+  const [careerHistory, setCareerHistory] = useState<Array<{
+    id: number;
+    company: string;
+    position: string;
+    startDate: string;
+    endDate: string;
+    description: string;
+  }>>([]);
+
+  const [documents, setDocuments] = useState<Array<{
+    id: number;
+    name: string;
+    date: string;
+    type: string;
+  }>>([]);
+
+  // Form states for new items
+  const [newExperience, setNewExperience] = useState({
+    company: "",
+    position: "",
+    startDate: "",
+    endDate: "",
+    description: ""
+  });
+
+  const [isAddingExperience, setIsAddingExperience] = useState(false);
+
+  // Load profile data
+  useEffect(() => {
+    setupUserProfile();
+    
+    // Get the first profile (in a real app, this would use the authenticated user ID)
+    const profiles = dbService.getAll('profiles');
+    if (profiles.length > 0) {
+      const profile = profiles[0];
+      setUserProfile({
+        id: profile.id,
+        name: profile.name || "",
+        email: profile.email || "",
+        position: profile.position || "",
+        department: profile.department || "",
+        phone: profile.phone || "",
+        address: profile.address || "",
+        hireDate: profile.hireDate || "",
+        manager: profile.manager || "",
+        bio: profile.bio || "",
+        socialSecurity: profile.socialSecurity || "",
+        bankAccount: profile.bankAccount || "",
+      });
+      
+      setCareerHistory(profile.careerHistory || []);
+      setDocuments(profile.documents || []);
+    }
+  }, []);
+
+  // Set the active tab based on the URL param
+  useEffect(() => {
+    if (tab) {
+      setActiveTab(tab);
+    }
+  }, [tab]);
+
+  // Handle field changes
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target;
+    setUserProfile((prev) => ({
+      ...prev,
+      [id]: value
+    }));
   };
 
-  const careerHistory = [
-    {
-      id: 1,
-      company: "Current Company",
-      position: "Senior Software Engineer",
-      startDate: "May 2019",
-      endDate: "Present",
-      description: "Leading frontend development for the company's main product. Implemented new features and improved performance."
-    },
-    {
-      id: 2,
-      company: "Previous Tech",
-      position: "Software Engineer",
-      startDate: "January 2017",
-      endDate: "April 2019",
-      description: "Worked on multiple web applications using React and Node.js. Collaborated with cross-functional teams."
-    },
-    {
-      id: 3,
-      company: "StartUp Inc",
-      position: "Junior Developer",
-      startDate: "June 2015",
-      endDate: "December 2016",
-      description: "Started as an intern and grew into a full-time role. Focused on frontend development with JavaScript."
-    }
-  ];
+  // Handle save changes
+  const handleSaveChanges = () => {
+    if (!userProfile.id) return;
+    
+    dbService.update('profiles', userProfile.id, {
+      ...userProfile,
+      careerHistory,
+      documents
+    });
+    
+    toast({
+      title: "Changes saved",
+      description: "Your profile has been updated successfully."
+    });
+  };
 
-  const documents = [
-    { id: 1, name: "Employment Contract", date: "2019-05-15", type: "PDF" },
-    { id: 2, name: "Tax Information Form", date: "2023-01-10", type: "PDF" },
-    { id: 3, name: "Performance Review 2022", date: "2022-12-05", type: "DOCX" },
-    { id: 4, name: "Benefits Enrollment", date: "2023-01-15", type: "PDF" },
-    { id: 5, name: "Training Certificate", date: "2022-08-22", type: "PDF" }
-  ];
+  // Handle new experience form changes
+  const handleNewExperienceChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target;
+    setNewExperience((prev) => ({
+      ...prev,
+      [id.replace('new-', '')]: value
+    }));
+  };
+
+  // Add new experience
+  const handleAddExperience = () => {
+    const newEntry = {
+      ...newExperience,
+      id: Date.now()
+    };
+    
+    setCareerHistory((prev) => [...prev, newEntry]);
+    setIsAddingExperience(false);
+    setNewExperience({
+      company: "",
+      position: "",
+      startDate: "",
+      endDate: "",
+      description: ""
+    });
+    
+    // Save to database
+    if (userProfile.id) {
+      dbService.update('profiles', userProfile.id, {
+        careerHistory: [...careerHistory, newEntry]
+      });
+      
+      toast({
+        title: "Experience added",
+        description: "Your career history has been updated."
+      });
+    }
+  };
+
+  // Delete experience
+  const handleDeleteExperience = (id: number) => {
+    const updatedHistory = careerHistory.filter(job => job.id !== id);
+    setCareerHistory(updatedHistory);
+    
+    // Save to database
+    if (userProfile.id) {
+      dbService.update('profiles', userProfile.id, {
+        careerHistory: updatedHistory
+      });
+      
+      toast({
+        title: "Experience removed",
+        description: "The entry has been deleted from your career history."
+      });
+    }
+  };
 
   return (
     <DashboardWithSidebar>
@@ -73,7 +191,7 @@ const Profile = () => {
               <div className="flex flex-col items-center text-center">
                 <Avatar className="h-24 w-24 mb-4">
                   <AvatarImage src="https://github.com/shadcn.png" />
-                  <AvatarFallback>JS</AvatarFallback>
+                  <AvatarFallback>{userProfile.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
                 </Avatar>
                 <h2 className="text-xl font-bold">{userProfile.name}</h2>
                 <p className="text-sm text-gray-500 mb-2">{userProfile.position}</p>
@@ -102,7 +220,12 @@ const Profile = () => {
                   </div>
                 </div>
                 
-                <Button className="mt-6 w-full bg-purple-600 hover:bg-purple-700">Edit Profile</Button>
+                <Button 
+                  className="mt-6 w-full bg-purple-600 hover:bg-purple-700"
+                  onClick={() => setActiveTab("personal")}
+                >
+                  Edit Profile
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -114,20 +237,38 @@ const Profile = () => {
             <CardContent>
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="ssn">Social Security Number</Label>
-                  <Input id="ssn" value={userProfile.socialSecurity} readOnly className="bg-gray-50" />
+                  <Label htmlFor="socialSecurity">Social Security Number</Label>
+                  <Input 
+                    id="socialSecurity" 
+                    value={userProfile.socialSecurity} 
+                    onChange={handleChange}
+                    className="bg-gray-50" 
+                  />
                 </div>
                 <div>
-                  <Label htmlFor="bank">Bank Account</Label>
-                  <Input id="bank" value={userProfile.bankAccount} readOnly className="bg-gray-50" />
+                  <Label htmlFor="bankAccount">Bank Account</Label>
+                  <Input 
+                    id="bankAccount" 
+                    value={userProfile.bankAccount} 
+                    onChange={handleChange}
+                    className="bg-gray-50" 
+                  />
                 </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full mt-2"
+                  onClick={handleSaveChanges}
+                >
+                  Save Sensitive Info
+                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
         
         <div className="col-span-12 lg:col-span-8">
-          <Tabs defaultValue="personal">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="w-full border-b rounded-none bg-transparent mb-6">
               <TabsTrigger value="personal" className="rounded-none">Personal Info</TabsTrigger>
               <TabsTrigger value="career" className="rounded-none">Career History</TabsTrigger>
@@ -142,44 +283,49 @@ const Profile = () => {
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <div>
-                      <Label htmlFor="fullName">Full Name</Label>
-                      <Input id="fullName" defaultValue={userProfile.name} />
+                      <Label htmlFor="name">Full Name</Label>
+                      <Input id="name" value={userProfile.name} onChange={handleChange} />
                     </div>
                     <div>
                       <Label htmlFor="email">Email</Label>
-                      <Input id="email" defaultValue={userProfile.email} />
+                      <Input id="email" value={userProfile.email} onChange={handleChange} />
                     </div>
                     <div>
                       <Label htmlFor="phone">Phone</Label>
-                      <Input id="phone" defaultValue={userProfile.phone} />
+                      <Input id="phone" value={userProfile.phone} onChange={handleChange} />
                     </div>
                     <div>
                       <Label htmlFor="position">Position</Label>
-                      <Input id="position" defaultValue={userProfile.position} />
+                      <Input id="position" value={userProfile.position} onChange={handleChange} />
                     </div>
                     <div>
                       <Label htmlFor="department">Department</Label>
-                      <Input id="department" defaultValue={userProfile.department} />
+                      <Input id="department" value={userProfile.department} onChange={handleChange} />
                     </div>
                     <div>
                       <Label htmlFor="manager">Manager</Label>
-                      <Input id="manager" defaultValue={userProfile.manager} />
+                      <Input id="manager" value={userProfile.manager} onChange={handleChange} />
                     </div>
                   </div>
                   
                   <div className="mb-6">
                     <Label htmlFor="address">Address</Label>
-                    <Input id="address" defaultValue={userProfile.address} />
+                    <Input id="address" value={userProfile.address} onChange={handleChange} />
                   </div>
                   
                   <div>
                     <Label htmlFor="bio">Bio</Label>
-                    <Textarea id="bio" defaultValue={userProfile.bio} className="h-32" />
+                    <Textarea id="bio" value={userProfile.bio} onChange={handleChange} className="h-32" />
                   </div>
                   
                   <div className="mt-6 flex justify-end space-x-2">
                     <Button variant="outline">Cancel</Button>
-                    <Button className="bg-purple-600 hover:bg-purple-700">Save Changes</Button>
+                    <Button 
+                      className="bg-purple-600 hover:bg-purple-700"
+                      onClick={handleSaveChanges}
+                    >
+                      Save Changes
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -194,7 +340,17 @@ const Profile = () => {
                   <div className="space-y-6">
                     {careerHistory.map((job) => (
                       <div key={job.id} className="border-b border-gray-100 last:border-0 pb-6 last:pb-0">
-                        <h3 className="font-semibold text-lg">{job.position}</h3>
+                        <div className="flex justify-between">
+                          <h3 className="font-semibold text-lg">{job.position}</h3>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-8 w-8 p-0 text-red-500"
+                            onClick={() => handleDeleteExperience(job.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                         <div className="flex items-center text-sm text-gray-500 mb-2">
                           <Building className="h-4 w-4 mr-1" />
                           <span>{job.company}</span>
@@ -204,14 +360,84 @@ const Profile = () => {
                         <p className="text-sm">{job.description}</p>
                       </div>
                     ))}
+
+                    {isAddingExperience && (
+                      <div className="border-t border-gray-100 pt-6">
+                        <h3 className="font-semibold text-lg mb-4">Add New Experience</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <Label htmlFor="new-position">Position</Label>
+                            <Input 
+                              id="new-position" 
+                              value={newExperience.position} 
+                              onChange={handleNewExperienceChange} 
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="new-company">Company</Label>
+                            <Input 
+                              id="new-company" 
+                              value={newExperience.company} 
+                              onChange={handleNewExperienceChange} 
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="new-startDate">Start Date</Label>
+                            <Input 
+                              id="new-startDate" 
+                              value={newExperience.startDate} 
+                              onChange={handleNewExperienceChange} 
+                              placeholder="e.g., January 2020"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="new-endDate">End Date</Label>
+                            <Input 
+                              id="new-endDate" 
+                              value={newExperience.endDate} 
+                              onChange={handleNewExperienceChange} 
+                              placeholder="e.g., Present"
+                            />
+                          </div>
+                        </div>
+                        <div className="mb-4">
+                          <Label htmlFor="new-description">Description</Label>
+                          <Textarea 
+                            id="new-description" 
+                            value={newExperience.description} 
+                            onChange={handleNewExperienceChange} 
+                            className="h-24" 
+                          />
+                        </div>
+                        <div className="flex justify-end space-x-2">
+                          <Button 
+                            variant="outline" 
+                            onClick={() => setIsAddingExperience(false)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button 
+                            className="bg-purple-600 hover:bg-purple-700"
+                            onClick={handleAddExperience}
+                          >
+                            Save Experience
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   
-                  <div className="mt-6">
-                    <Button className="bg-purple-600 hover:bg-purple-700">
-                      <User className="h-4 w-4 mr-2" />
-                      Add Experience
-                    </Button>
-                  </div>
+                  {!isAddingExperience && (
+                    <div className="mt-6">
+                      <Button 
+                        className="bg-purple-600 hover:bg-purple-700"
+                        onClick={() => setIsAddingExperience(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Experience
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

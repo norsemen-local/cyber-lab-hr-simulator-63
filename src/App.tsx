@@ -13,12 +13,23 @@ import TimeManagement from "./pages/TimeManagement";
 import DocumentUpload from "./pages/DocumentUpload";
 import Footer from "./components/Footer";
 import { useEffect } from "react";
+import CompanyHeader from "./components/CompanyHeader";
 
 const queryClient = new QueryClient();
 
 const App = () => {
   useEffect(() => {
     console.log("App component mounted");
+    
+    // Add app title with company name
+    document.title = "TechPro Solutions - HR Portal";
+    
+    // Get favicon link element
+    const favicon = document.querySelector("link[rel='icon']");
+    if (favicon) {
+      // Update favicon to purple (simulating company branding)
+      favicon.setAttribute("href", "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90' x='50%' text-anchor='middle' dominant-baseline='middle' fill='purple'>T</text></svg>");
+    }
   }, []);
 
   return (

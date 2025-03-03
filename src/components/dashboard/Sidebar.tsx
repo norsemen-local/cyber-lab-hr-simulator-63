@@ -1,8 +1,8 @@
-
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import CompanyHeader from "../CompanyHeader";
 import { 
   Home, 
   User, 
@@ -16,8 +16,7 @@ import {
   Bell,
   BarChart3,
   Mail,
-  HelpCircle,
-  Building2
+  HelpCircle
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { logout } from "../../services/authService";
@@ -40,7 +39,6 @@ const MenuItem = ({ icon, label, path, subItems, activePathMatches = [] }: MenuI
   const navigate = useNavigate();
   const location = useLocation();
   const [isExpanded, setIsExpanded] = useState(() => {
-    // Auto-expand submenu if a subitem is active
     if (subItems) {
       return subItems.some(item => location.pathname.startsWith(item.path));
     }
@@ -135,12 +133,7 @@ const Sidebar = ({ isOpen, setIsOpen }: SidebarProps) => {
     >
       <div className="flex h-screen flex-col">
         <div className="flex h-14 items-center border-b px-4">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-6 w-6 text-purple-600" />
-            <h2 className="text-lg font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              HR Portal
-            </h2>
-          </div>
+          <CompanyHeader />
           <Button
             variant="ghost"
             size="icon"

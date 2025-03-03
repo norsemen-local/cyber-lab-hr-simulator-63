@@ -14,13 +14,44 @@ interface StatCardProps {
   };
   className?: string;
   onClick?: () => void;
+  type?: 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'danger';
 }
 
-const StatCard = ({ title, value, icon, description, trend, className, onClick }: StatCardProps) => {
+const StatCard = ({ 
+  title, 
+  value, 
+  icon, 
+  description, 
+  trend, 
+  className, 
+  onClick,
+  type = 'default'
+}: StatCardProps) => {
+  // Card type styling
+  const cardStyles = {
+    default: "border-none shadow-md bg-white/80 backdrop-blur-sm",
+    primary: "border-none shadow-md bg-gradient-to-br from-blue-50 to-purple-50 border-l-4 border-l-purple-500",
+    secondary: "border-none shadow-md bg-gradient-to-br from-gray-50 to-blue-50 border-l-4 border-l-blue-500",
+    success: "border-none shadow-md bg-gradient-to-br from-green-50 to-teal-50 border-l-4 border-l-green-500",
+    warning: "border-none shadow-md bg-gradient-to-br from-yellow-50 to-orange-50 border-l-4 border-l-yellow-500",
+    danger: "border-none shadow-md bg-gradient-to-br from-red-50 to-pink-50 border-l-4 border-l-red-500",
+  };
+  
+  // Icon background styling
+  const iconStyles = {
+    default: "bg-purple-100",
+    primary: "bg-purple-100",
+    secondary: "bg-blue-100",
+    success: "bg-green-100",
+    warning: "bg-yellow-100",
+    danger: "bg-red-100",
+  };
+
   return (
     <Card 
       className={cn(
-        "border-none shadow-md bg-white/80 backdrop-blur-sm hover:shadow-lg transition-all", 
+        cardStyles[type],
+        "hover:shadow-lg transition-all", 
         onClick ? "cursor-pointer" : "",
         className
       )}
@@ -46,7 +77,7 @@ const StatCard = ({ title, value, icon, description, trend, className, onClick }
             )}
             {description && <p className="text-xs text-gray-500 mt-1">{description}</p>}
           </div>
-          <div className="p-3 rounded-full bg-purple-100">{icon}</div>
+          <div className={`p-3 rounded-full ${iconStyles[type]}`}>{icon}</div>
         </div>
       </CardContent>
     </Card>
