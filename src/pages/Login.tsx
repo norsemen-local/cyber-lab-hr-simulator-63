@@ -6,14 +6,16 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Navigate, useNavigate } from "react-router-dom";
 import { login, getCurrentUser, setCurrentUser } from "../services/authService";
 import { useToast } from "@/components/ui/use-toast";
-import { LogIn, AlertTriangle } from "lucide-react";
+import { LogIn, AlertTriangle, ShieldAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [sqlQuery, setSqlQuery] = useState("");
+  const [bypassValidation, setBypassValidation] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   
@@ -25,15 +27,18 @@ const Login = () => {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Basic email validation on the front-end only
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      toast({
-        title: "Invalid email format",
-        description: "Please enter a valid email address",
-        variant: "destructive",
-      });
-      return;
+    // Only apply email validation if bypass is not checked
+    if (!bypassValidation) {
+      // Basic email validation on the front-end only
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        toast({
+          title: "Invalid email format",
+          description: "Please enter a valid email address",
+          variant: "destructive",
+        });
+        return;
+      }
     }
     
     setLoading(true);
@@ -102,7 +107,7 @@ const Login = () => {
               <div className="space-y-2">
                 <Input 
                   id="email" 
-                  type="email"
+                  type="text" // Changed from email to text to allow non-email inputs
                   placeholder="Email Address" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -120,6 +125,21 @@ const Login = () => {
                 />
               </div>
               
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="bypass" 
+                  checked={bypassValidation} 
+                  onCheckedChange={(checked) => setBypassValidation(checked as boolean)} 
+                />
+                <label
+                  htmlFor="bypass"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 flex items-center"
+                >
+                  <ShieldAlert className="h-4 w-4 mr-1 text-yellow-600" />
+                  Bypass email validation (for SQLi testing)
+                </label>
+              </div>
+              
               {sqlQuery && (
                 <Alert variant="destructive" className="my-4">
                   <AlertTriangle className="h-4 w-4" />
@@ -129,6 +149,8 @@ const Login = () => {
                   </AlertDescription>
                   <AlertDescription className="mt-2 text-xs">
                     Try: <code className="bg-gray-100 p-1 rounded">admin@example.com' --</code> as email
+                    <br />
+                    Or: <code className="bg-gray-100 p-1 rounded">' OR '1'='1</code> with "Bypass email validation" checked
                   </AlertDescription>
                 </Alert>
               )}
