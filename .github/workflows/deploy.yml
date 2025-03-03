@@ -306,7 +306,10 @@ jobs:
               "echo \"Creating application directory...\"",
               "mkdir -p /tmp/hrApp",
               "chmod -R 777 /tmp/hrApp",
+              "mkdir -p /opt/hrApp",
+              "chmod -R 777 /opt/hrApp",
               "echo \"Directory prepared at $(date)\" > /tmp/hrApp/prepared.txt",
+              "echo \"Directory prepared at $(date)\" > /opt/hrApp/prepared.txt",
               "echo \"===== VERIFICATION COMPLETE =====\""
             ]' \
             --comment "Verify Docker installation"
@@ -389,10 +392,10 @@ jobs:
             --parameters "{\"commands\":[
               \"echo \\\"====== STARTING DEPLOYMENT \$(date) ======\\\" > /tmp/deployment.log\",
               
-              \"aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /tmp/hrApp/ >> /tmp/deployment.log 2>&1\",
+              \"aws s3 cp s3://$BUCKET_NAME/hr-portal-app.tar /opt/hrApp/ >> /opt/hrApp/deployment.log 2>&1\",
               
               \"echo \\\"Loading Docker image...\\\" >> /tmp/deployment.log\",
-              \"sudo docker load -i /tmp/hrApp/hr-portal-app.tar >> /tmp/deployment.log 2>&1\",
+              \"sudo docker load -i /opt/hrApp/hr-portal-app.tar >> /tmp/deployment.log 2>&1\",
               
               \"echo \\\"Removing existing container if any...\\\" >> /tmp/deployment.log\",
               \"sudo docker stop hr-portal-container >> /tmp/deployment.log 2>&1 || echo \\\"No container to stop\\\" >> /tmp/deployment.log\",
