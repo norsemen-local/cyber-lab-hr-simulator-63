@@ -1,3 +1,4 @@
+
 // API Gateway base URL would typically come from environment variables
 const API_GATEWAY_URL = "https://api-gateway-endpoint.execute-api.region.amazonaws.com/prod";
 
@@ -18,16 +19,40 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<{ c
       return { content, contentType };
     }
     
-    // For regular file uploads
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('destination', uploadUrl);
+    // For regular file uploads, handle different file types appropriately
+    const contentType = file.type || 'application/octet-stream';
     
-    // Read file content for preview
+    // For images and PDFs, read as base64 data
+    if (contentType.includes('image') || contentType.includes('pdf')) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        
+        reader.onload = (event) => {
+          if (event.target && event.target.result) {
+            // Return the base64 data
+            resolve({ 
+              content: event.target.result.toString(),
+              contentType
+            });
+          } else {
+            reject(new Error('Failed to read file'));
+          }
+        };
+        
+        reader.onerror = () => {
+          reject(new Error('Failed to read file'));
+        };
+        
+        // Read the file as a data URL (base64)
+        reader.readAsDataURL(file);
+      });
+    }
+    
+    // For text files and other file types, read as text
     const content = await file.text();
     return { 
       content,
-      contentType: file.type || 'application/octet-stream'
+      contentType
     };
   } catch (error) {
     console.error('Upload error:', error);
