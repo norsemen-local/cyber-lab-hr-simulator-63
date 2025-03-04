@@ -15,6 +15,7 @@ import Notifications from "./pages/Notifications";
 import Messages from "./pages/Messages";
 import Settings from "./pages/Settings";
 import HelpSupport from "./pages/HelpSupport";
+import Performance from "./pages/Performance";
 import Footer from "./components/Footer";
 import { useEffect } from "react";
 import CompanyHeader from "./components/CompanyHeader";
@@ -57,6 +58,9 @@ const App = () => {
                 <Route path="/messages" element={<Messages />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/help" element={<HelpSupport />} />
+                {/* Add Performance routes */}
+                <Route path="/performance" element={<Performance />} />
+                <Route path="/performance/:tab" element={<Performance />} />
                 {/* Redirect /register to /login */}
                 <Route path="/register" element={<Navigate to="/login" />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
