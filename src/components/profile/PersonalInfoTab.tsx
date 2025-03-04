@@ -62,14 +62,24 @@ const PersonalInfoTab = ({ userProfile, onSave }: PersonalInfoProps) => {
   const handleSaveChanges = () => {
     setIsSaving(true);
     
-    // Simulate API call delay
+    // Ensure we're passing the complete profile object to the onSave function
     setTimeout(() => {
-      onSave(profile);
-      setIsSaving(false);
-      toast({
-        title: "Profile Updated",
-        description: "Your personal information has been saved successfully",
-      });
+      try {
+        onSave({...profile});
+        setIsSaving(false);
+        toast({
+          title: "Profile Updated",
+          description: "Your personal information has been saved successfully",
+        });
+      } catch (error) {
+        console.error("Error saving profile:", error);
+        setIsSaving(false);
+        toast({
+          title: "Failed to Save",
+          description: "There was an error saving your profile information",
+          variant: "destructive",
+        });
+      }
     }, 1000);
   };
 
@@ -143,11 +153,12 @@ const PersonalInfoTab = ({ userProfile, onSave }: PersonalInfoProps) => {
         </div>
         
         <div className="mt-6 flex justify-end space-x-2">
-          <Button variant="outline">Cancel</Button>
+          <Button variant="outline" type="button" onClick={() => setProfile(userProfile)}>Cancel</Button>
           <Button 
             className="bg-purple-600 hover:bg-purple-700"
             onClick={handleSaveChanges}
             disabled={isSaving}
+            type="button"
           >
             {isSaving ? (
               <span className="flex items-center">

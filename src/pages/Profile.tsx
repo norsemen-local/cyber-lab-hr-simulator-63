@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -15,12 +14,13 @@ const Profile = () => {
   const navigate = useNavigate();
   const activeTab = tab || "personal";
   const { profile, loading, updateProfile, updateCareerHistory, addDocument, getDocument } = useProfile();
-
+  
   const handleTabChange = (value: string) => {
     navigate(`/profile/${value}`);
   };
 
   const handleUpdateProfile = (updatedProfile: any) => {
+    console.log("Updating profile with:", updatedProfile);
     updateProfile({
       firstName: updatedProfile.firstName,
       lastName: updatedProfile.lastName,
@@ -72,26 +72,28 @@ const Profile = () => {
               </TabsList>
               
               <TabsContent value="personal" className="space-y-4">
-                <PersonalInfoTab 
-                  userProfile={{
-                    firstName: profile?.firstName || "",
-                    lastName: profile?.lastName || "",
-                    email: profile?.email || "",
-                    phone: profile?.phone || "",
-                    position: profile?.position || "",
-                    department: profile?.department || "",
-                    manager: profile?.manager || "",
-                    address: profile?.address || {
-                      street: "",
-                      city: "",
-                      state: "",
-                      zipCode: "",
-                      country: ""
-                    },
-                    bio: profile?.bio || ""
-                  }}
-                  onSave={handleUpdateProfile}
-                />
+                {profile && (
+                  <PersonalInfoTab 
+                    userProfile={{
+                      firstName: profile.firstName || "",
+                      lastName: profile.lastName || "",
+                      email: profile.email || "",
+                      phone: profile.phone || "",
+                      position: profile.position || "",
+                      department: profile.department || "",
+                      manager: profile.manager || "",
+                      address: profile.address || {
+                        street: "",
+                        city: "",
+                        state: "",
+                        zipCode: "",
+                        country: ""
+                      },
+                      bio: profile.bio || ""
+                    }}
+                    onSave={handleUpdateProfile}
+                  />
+                )}
               </TabsContent>
               
               <TabsContent value="career" className="space-y-4">
