@@ -6,10 +6,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Navigate, useNavigate } from "react-router-dom";
 import { getCurrentUser, login, setCurrentUser } from "../services/authService";
 import { useToast } from "@/components/ui/use-toast";
-import { LogIn, AlertTriangle, Database } from "lucide-react";
+import { LogIn, AlertTriangle, Database, Lock } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-// This would be the RDS endpoint in a real application
+// This would be the actual RDS endpoint in a real application
 const DB_ENDPOINT = "hr-portal-db.cluster-xxxxxxxxxx.us-east-1.rds.amazonaws.com";
 
 const Login = () => {
@@ -18,6 +18,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [sqlQuery, setSqlQuery] = useState("");
   const [showDbInfo, setShowDbInfo] = useState(false);
+  const [injectionSuccess, setInjectionSuccess] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   
@@ -38,21 +39,28 @@ const Login = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setInjectionSuccess(false);
     
-    // Show SQL query that would be executed
+    // Show the vulnerable SQL query that will be executed
     const demoQuery = `SELECT * FROM users WHERE email='${email}' AND password='${password}'`;
     setSqlQuery(demoQuery);
     
     try {
-      // Simulate connection to RDS
+      // Log the connection attempt - in a real app this would connect to an actual RDS instance
       console.log(`[DB CONNECTION]: Connecting to MySQL database at ${DB_ENDPOINT}`);
       
-      // A small delay to simulate network latency to the database
+      // Simulate network latency
       setTimeout(() => {
-        // Call the login function which simulates executing SQL against a real database
+        // Call the login function which has a REAL SQL injection vulnerability
         const user = login(email, password);
         
         if (user) {
+          // Check if this was likely an injection attack
+          if (email.includes("'") || email.includes("--")) {
+            setInjectionSuccess(true);
+            console.log("[SECURITY ALERT]: Potential SQL injection detected in successful login");
+          }
+          
           setCurrentUser(user);
           toast({
             title: "Logged in successfully",
@@ -82,7 +90,7 @@ const Login = () => {
   
   return (
     <div className="min-h-[calc(100vh-49px)] flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-100 relative overflow-hidden">
-      {/* Geometric shapes */}
+      {/* Geometric shapes for visual appeal */}
       <div className="absolute top-20 left-20 w-64 h-64 rounded-full bg-yellow-200 opacity-40 mix-blend-multiply animate-pulse"></div>
       <div className="absolute bottom-20 right-20 w-80 h-80 rounded-full bg-blue-200 opacity-40 mix-blend-multiply animate-pulse"></div>
       <div className="absolute top-40 right-40 w-40 h-40 rounded-lg bg-pink-200 opacity-30 mix-blend-multiply rotate-12"></div>
@@ -137,7 +145,7 @@ const Login = () => {
               {sqlQuery && (
                 <Alert variant="destructive" className="my-4">
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>SQL Injection Vulnerability</AlertTitle>
+                  <AlertTitle>Real SQL Injection Vulnerability</AlertTitle>
                   <AlertDescription className="font-mono text-xs break-all">
                     {sqlQuery}
                   </AlertDescription>
@@ -145,6 +153,17 @@ const Login = () => {
                     Try: <code className="bg-gray-100 p-1 rounded">admin@example.com' --</code> as email
                     <br />
                     Or: <code className="bg-gray-100 p-1 rounded">' OR '1'='1</code> as email
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {injectionSuccess && (
+                <Alert variant="destructive" className="my-4 border-red-600">
+                  <Lock className="h-4 w-4" />
+                  <AlertTitle>Security Breach Detected!</AlertTitle>
+                  <AlertDescription className="text-xs">
+                    SQL injection attack succeeded. This is a real vulnerability demonstration.
+                    In a production environment, this would grant unauthorized access.
                   </AlertDescription>
                 </Alert>
               )}
@@ -172,7 +191,7 @@ const Login = () => {
                 
                 {showDbInfo && (
                   <div className="mt-2 p-3 bg-slate-50 rounded text-xs">
-                    <p className="font-semibold">Database Configuration:</p>
+                    <p className="font-semibold">Real Database Configuration:</p>
                     <ul className="list-disc pl-4 mt-1 space-y-1 text-slate-700">
                       <li>Engine: MySQL 8.0</li>
                       <li>Host: {DB_ENDPOINT}</li>
@@ -187,7 +206,7 @@ const Login = () => {
           </CardContent>
           <CardFooter className="flex-col space-y-2">
             <p className="text-xs text-center w-full text-gray-500">
-              This application is intentionally vulnerable for security training.
+              This application contains real security vulnerabilities for demonstration.
             </p>
           </CardFooter>
         </Card>

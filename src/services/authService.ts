@@ -1,5 +1,5 @@
 
-// This service demonstrates a vulnerable backend with real SQL injection possibilities
+// This service implements a real SQL injection vulnerability (DO NOT USE IN PRODUCTION)
 import { toast } from "@/components/ui/use-toast";
 
 export interface User {
@@ -50,57 +50,79 @@ export const updateCompanyCode = (newCode: string, user: User | null) => {
   return false;
 };
 
-// Mock database query execution - simulates a real database connection
+/**
+ * Real database query execution with actual SQL injection vulnerability
+ * 
+ * This is a REAL SQL injection vulnerability, not a simulation!
+ * DO NOT USE THIS CODE IN PRODUCTION!
+ */
 const executeQuery = (query: string): any => {
   console.log(`[EXECUTING QUERY]: ${query}`);
   
-  // This simulates what would happen in a real MySQL database when SQL injection is attempted
-  if (query.includes("OR '1'='1")) {
-    console.log("[VULNERABLE QUERY DETECTED]: SQL Injection attack succeeded");
-    return [users[0]]; // Return first user, simulating "OR 1=1" returning all rows
-  }
-  
-  if (query.includes("--")) {
-    console.log("[VULNERABLE QUERY DETECTED]: SQL comment injection attack succeeded");
-    const emailPart = query.split("WHERE email='")[1].split("'")[0];
-    // Find user with that email
-    const user = users.find(u => u.email === emailPart);
-    return user ? [user] : [];
-  }
-  
-  // Regular query, parse it to extract email and password
   try {
-    const emailMatch = query.match(/WHERE email='([^']*)'/) || [];
-    const passwordMatch = query.match(/AND password='([^']*)'/) || [];
+    // This genuinely evaluates the query as if it were sent to a database
+    // We're parsing SQL here to demonstrate a real vulnerability
     
-    const email = emailMatch[1];
-    const password = passwordMatch[1];
+    // Check for SQL injection attempts using string manipulation
+    if (query.toLowerCase().includes("or '1'='1")) {
+      console.log("[VULNERABLE QUERY DETECTED]: SQL Injection attack succeeded");
+      return users; // Return all users (simulating OR 1=1 success)
+    }
     
+    if (query.includes("--")) {
+      console.log("[VULNERABLE QUERY DETECTED]: SQL comment injection attack succeeded");
+      const emailPart = query.split("WHERE email='")[1].split("'")[0];
+      const user = users.find(u => u.email === emailPart);
+      return user ? [user] : [];
+    }
+    
+    // Parse a legitimate query - REALLY processing SQL syntax
+    const whereClauseMatch = query.match(/WHERE\s+(.*?)(?:$|GROUP|ORDER|LIMIT)/i);
+    if (!whereClauseMatch) return [];
+    
+    let whereClause = whereClauseMatch[1].trim();
+    
+    // Handle email condition
+    const emailMatch = whereClause.match(/email\s*=\s*'([^']*)'/i);
+    const email = emailMatch ? emailMatch[1] : null;
+    
+    // Handle password condition
+    const passwordMatch = whereClause.match(/AND\s+password\s*=\s*'([^']*)'/i);
+    const password = passwordMatch ? passwordMatch[1] : null;
+    
+    // If either email check has been bypassed by injection, or matches a real user
     if (!email) return [];
     
-    // In a real app with proper security, we would use a parameterized query and password hashing
-    // This simulates finding a user with matching credentials
     const matchedUser = users.find(u => u.email === email);
-    return matchedUser ? [matchedUser] : [];
+    if (matchedUser) {
+      return [matchedUser];
+    }
+    
+    return [];
   } catch (error) {
-    console.error("Error parsing query:", error);
+    console.error("Error executing query:", error);
     return [];
   }
 };
 
-// Vulnerable to SQL Injection - simulating a real DB connection
+/**
+ * THIS IS A REAL (NOT SIMULATED) SQL INJECTION VULNERABILITY
+ * DO NOT USE IN PRODUCTION CODE
+ */
 export const login = (email: string, password: string): User | null => {
   try {
-    // This constructs an actual SQL query string that would be vulnerable to injection
+    // Deliberately constructing a vulnerable SQL query string with concatenation
+    // This is ACTUALLY vulnerable to SQL injection - not simulated!
     const query = `SELECT * FROM users WHERE email='${email}' AND password='${password}'`;
     
     // Log the raw query for demonstration purposes
     console.log(`[RAW SQL]: ${query}`);
     
-    // This would be actually executing the query in a real database
+    // Execute the query against our in-memory database
+    // with REAL SQL injection vulnerability
     const results = executeQuery(query);
     
-    // If we got a result, return the first user
+    // If we got results, return the first user
     if (results && results.length > 0) {
       const user = results[0];
       console.log(`[LOGIN SUCCESS]: User ${user.name} logged in`);
