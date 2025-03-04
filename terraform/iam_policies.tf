@@ -69,6 +69,28 @@ resource "aws_iam_policy" "jenkins_lambda_policy" {
   tags = local.common_tags
 }
 
+# IAM Policy for Role Assumption and Modification
+resource "aws_iam_policy" "role_assumption_policy" {
+  name        = "jenkins-role-assumption-policy"
+  description = "Policy allowing Jenkins to assume and modify roles"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "iam:UpdateAssumeRolePolicy",
+          "sts:AssumeRole"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
 # Attach policies to role
 resource "aws_iam_role_policy_attachment" "ec2_ssh_policy_attachment" {
   role       = aws_iam_role.ec2_role.name
@@ -84,6 +106,12 @@ resource "aws_iam_role_policy_attachment" "ec2_s3_policy_attachment" {
 resource "aws_iam_role_policy_attachment" "jenkins_lambda_policy_attachment" {
   role       = aws_iam_role.ec2_role.name
   policy_arn = aws_iam_policy.jenkins_lambda_policy.arn
+}
+
+# Attach Role Assumption policy to Jenkins EC2 role
+resource "aws_iam_role_policy_attachment" "role_assumption_policy_attachment" {
+  role       = aws_iam_role.ec2_role.name
+  policy_arn = aws_iam_policy.role_assumption_policy.arn
 }
 
 # For accessing SSM (Session Manager) if needed

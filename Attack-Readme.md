@@ -1,7 +1,7 @@
 
 # HR Portal Attack Guide
 
-This document provides a guide on how to exploit the vulnerabilities in the HR Portal application. **This is for educational purposes only** and should only be performed in a controlled environment with explicit authorization.
+This document provides a comprehensive guide on exploiting vulnerabilities in the HR Portal application. **This is for educational purposes only** and should only be performed in a controlled environment with explicit authorization.
 
 ⚠️ **WARNING: These attacks should only be performed in a controlled environment with proper authorization. Unauthorized testing against systems is illegal and unethical.**
 
@@ -13,19 +13,45 @@ This document provides a guide on how to exploit the vulnerabilities in the HR P
 4. [Exploiting Jenkins for RCE](./attacks/04-jenkins-exploitation.md)
 5. [Privilege Escalation Using AWS IAM Permissions](./attacks/05-privilege-escalation.md)
 
-## Mitigation Recommendations
+## Attack Flow Summary
 
-See our [mitigation recommendations](./attacks/06-mitigation.md) for protecting against these types of attacks.
+1. **Initial Access**: Exploit SQL injection to gain access to the HR Portal
+2. **SSRF Exploitation**: Use document upload functionality to perform SSRF attacks
+3. **Container Escape**: Upload a web shell and break out of the container
+4. **Network Discovery**: Scan internal network to find Jenkins server
+5. **Jenkins Exploitation**: Exploit vulnerable Jenkins to gain server access
+6. **AWS Credential Theft**: Access EC2 metadata to steal AWS credentials
+7. **IAM Privilege Escalation**: Leverage IAM permissions to create admin user
 
 ## Prerequisites
 
 - Basic understanding of web security concepts
-- Basic understanding of Linux command line
-- Access to the target HR Portal application
-- Access to tools like Burp Suite, NMAP, and other penetration testing tools
+- Familiarity with Linux command line
+- Knowledge of AWS services and IAM
+- Basic understanding of Docker and containerization
+- Access to penetration testing tools
 
-## Conclusion
+## Required Tools
 
-These attack scenarios demonstrate the importance of proper security practices in cloud environments. By understanding how these attacks work, security professionals can better protect their systems against similar threats.
+- Web browser
+- Burp Suite or similar proxy
+- NMAP for network scanning
+- Metasploit Framework (optional)
+- AWS CLI
+
+## Mitigation Recommendations
+
+See our [mitigation recommendations](./attacks/06-mitigation.md) for protecting against these types of attacks.
+
+## Local Testing Environment
+
+This repository includes Docker configurations to set up a vulnerable testing environment locally. To set up:
+
+```bash
+# Build and run the vulnerable environment
+docker-compose up -d
+
+# Access the HR Portal at http://localhost:8080
+```
 
 **Remember:** Always obtain proper authorization before performing security testing against any system.
