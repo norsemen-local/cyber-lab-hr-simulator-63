@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import DashboardWithSidebar from "../components/dashboard/DashboardWithSidebar";
 import { Button } from "@/components/ui/button";
@@ -48,48 +47,37 @@ const DocumentUpload = () => {
       // This is intentionally vulnerable to SSRF
       console.log(`Uploading to: ${uploadUrl}/${selectedFile.name}`);
 
-      // Route the upload request through the API Gateway
-      const response = await fetch(`${API_GATEWAY_URL}/api/upload`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      // For simulation purposes, we'll fetch directly from the URL if it's HTTP/HTTPS
-      // In a real application, this would be done server-side and constitute the SSRF vulnerability
-      // Now routed through API Gateway
+      // For simulation purposes, we'll handle the SSRF demonstration locally
       if (uploadUrl.startsWith('http')) {
-        try {
-          const directResponse = await fetch(`${API_GATEWAY_URL}/proxy?url=${encodeURIComponent(uploadUrl)}`, { 
-            method: 'GET'
-          });
-          const text = await directResponse.text();
-          setResponseData(text);
-        } catch (error) {
-          // For CORS issues, simulate what would happen server-side
-          // This simulates how a backend with SSRF would return the content
-          setResponseData(`Simulated SSRF Response (via API Gateway):\n\nMetadata for ${uploadUrl}:\n{\n  "instance-id": "i-0123456789abcdef0",\n  "instance-type": "t3.micro",\n  "local-hostname": "ip-10-0-0-123.ec2.internal",\n  "local-ipv4": "10.0.0.123",\n  "public-hostname": "ec2-12-34-56-78.compute-1.amazonaws.com",\n  "public-ipv4": "12.34.56.78",\n  "security-groups": "hr-portal-ec2-sg",\n  "iam": {\n    "security-credentials": {\n      "hr-portal-ec2-role": {\n        "AccessKeyId": "ASIA...",\n        "SecretAccessKey": "SECRET...",\n        "Token": "TOKEN...",\n        "Expiration": "2023-12-31T23:59:59Z"\n      }\n    }\n  }\n}`);
-        }
-      } else {
-        // For non-HTTP URLs like s3://, route through API Gateway
-        const gatewayResponse = await fetch(`${API_GATEWAY_URL}/upload`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            destinationUrl: uploadUrl,
-            fileName: selectedFile.name
-          }),
-        });
+        // Simulate SSRF vulnerability exploitation
+        console.log(`Simulating SSRF access to: ${uploadUrl}`);
         
-        if (gatewayResponse.ok) {
+        // Simulate successful EC2 metadata retrieval for demonstration
+        if (uploadUrl.includes("169.254.169.254")) {
+          const simulatedMetadata = `Simulated SSRF Response:\n\nMetadata for ${uploadUrl}:\n{\n  "instance-id": "i-0123456789abcdef0",\n  "instance-type": "t3.micro",\n  "local-hostname": "ip-10-0-0-123.ec2.internal",\n  "local-ipv4": "10.0.0.123",\n  "public-hostname": "ec2-12-34-56-78.compute-1.amazonaws.com",\n  "public-ipv4": "12.34.56.78",\n  "security-groups": "hr-portal-ec2-sg",\n  "iam": {\n    "security-credentials": {\n      "hr-portal-ec2-role": {\n        "AccessKeyId": "ASIA...",\n        "SecretAccessKey": "SECRET...",\n        "Token": "TOKEN...",\n        "Expiration": "2023-12-31T23:59:59Z"\n      }\n    }\n  }\n}`;
+          setResponseData(simulatedMetadata);
+          
           toast({
-            title: "Upload Successful",
-            description: `File ${selectedFile.name} uploaded to ${uploadUrl} via API Gateway`,
+            title: "SSRF Successful",
+            description: "Successfully accessed EC2 metadata via SSRF vulnerability",
           });
         } else {
-          throw new Error("Upload failed");
+          // Generic SSRF response for other URLs
+          setResponseData(`Simulated SSRF Response:\n\nContent from ${uploadUrl}:\n{\n  "status": "success",\n  "message": "SSRF vulnerability demonstrated successfully"\n}`);
+          
+          toast({
+            title: "SSRF Demonstration",
+            description: "Simulated access to external URL via SSRF vulnerability",
+          });
         }
+      } else {
+        // For non-HTTP URLs like s3://, simulate upload success
+        setTimeout(() => {
+          toast({
+            title: "Upload Successful",
+            description: `File ${selectedFile.name} uploaded to ${uploadUrl}`,
+          });
+        }, 1000);
       }
     } catch (error) {
       console.error("Upload error:", error);

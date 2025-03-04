@@ -1,4 +1,3 @@
-
 // This service simulates a vulnerable backend with SQLi possibilities
 export interface User {
   id: number;
@@ -96,17 +95,26 @@ export const register = (
   return newUser;
 };
 
-// Store current user in session
-let currentUser: User | null = null;
-
+// Store current user in session storage for persistence
 export const getCurrentUser = (): User | null => {
-  return currentUser;
+  // Try to get user from session storage
+  const storedUser = sessionStorage.getItem('currentUser');
+  if (storedUser) {
+    return JSON.parse(storedUser);
+  }
+  return null;
 };
 
 export const setCurrentUser = (user: User | null) => {
-  currentUser = user;
+  if (user) {
+    // Store user in session storage
+    sessionStorage.setItem('currentUser', JSON.stringify(user));
+  } else {
+    // Remove user from session storage if null
+    sessionStorage.removeItem('currentUser');
+  }
 };
 
 export const logout = () => {
-  currentUser = null;
+  sessionStorage.removeItem('currentUser');
 };

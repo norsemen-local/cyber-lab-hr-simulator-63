@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +20,15 @@ const Login = () => {
   const [sqlQuery, setSqlQuery] = useState("");
   const { toast } = useToast();
   const navigate = useNavigate();
+  
+  // Check session storage on component mount
+  useEffect(() => {
+    // If user is already logged in (from session storage), no need to show login page
+    const user = getCurrentUser();
+    if (user) {
+      navigate("/");
+    }
+  }, [navigate]);
   
   // If user is already logged in, redirect to home
   if (getCurrentUser()) {
