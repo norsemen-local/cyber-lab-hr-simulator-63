@@ -118,11 +118,13 @@ const DestinationSelector = ({
               <span>SSRF Attack Mode Enabled</span>
             </div>
             <p className="text-xs">
-              Try these URLs for real SSRF attacks:<br />
+              Try these URLs for SSRF attacks (simulated responses will be displayed):<br />
               • http://169.254.169.254/latest/meta-data/<br />
+              • http://169.254.169.254/latest/meta-data/iam/security-credentials/<br />
               • http://localhost:8080<br />
               • http://internal-jenkins:8080<br />
-              • file:///etc/passwd
+              • file:///etc/passwd<br />
+              • file:///etc/shadow
             </p>
           </div>
         )}
