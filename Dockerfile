@@ -8,14 +8,17 @@ WORKDIR /app
 # Only copy package files first to leverage Docker caching for dependencies
 COPY package*.json ./
 
-# Install dependencies with --omit=dev for production
-RUN npm ci --omit=dev
+# Install dependencies (including dev dependencies needed for build)
+RUN npm ci
 
 # Copy the rest of the application
 COPY . .
 
 # Build the application
 RUN npm run build
+
+# After build, remove dev dependencies for production
+RUN npm prune --omit=dev
 
 # Install a simple HTTP server for serving static content
 RUN npm install -g serve

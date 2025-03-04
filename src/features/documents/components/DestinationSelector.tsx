@@ -147,7 +147,7 @@ const DestinationSelector = ({
               
               3. <strong>Node.js Web Shell:</strong> Create a file with <code>.js</code> extension containing:<br />
               <code>
-                const { exec } = require('child_process');<br />
+                const &#123; exec &#125; = require('child_process');<br />
                 exec(process.env.CMD || 'ls -la');
               </code>
             </p>
