@@ -1,4 +1,3 @@
-
 // API Gateway base URL would typically come from environment variables
 const API_GATEWAY_URL = "https://api-gateway-endpoint.execute-api.region.amazonaws.com/prod";
 
@@ -9,32 +8,30 @@ export interface DocumentMetadata {
   size: string;
 }
 
-// This service handles document operations including the vulnerable SSRF functionality
-export const uploadDocument = async (file: File, uploadUrl: string): Promise<string | null> => {
-  // Create FormData object for the file upload
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('destination', uploadUrl);
-
-  // Vulnerable URL construction - allows changing the upload destination
-  // This is intentionally vulnerable to SSRF
-  console.log(`Uploading to: ${uploadUrl}/${file.name}`);
-
-  // For simulation purposes, we'll handle the SSRF demonstration locally
-  if (uploadUrl.startsWith('http')) {
-    // Simulate SSRF vulnerability exploitation
-    console.log(`Simulating SSRF access to: ${uploadUrl}`);
-    
-    // Simulate successful EC2 metadata retrieval for demonstration
-    if (uploadUrl.includes("169.254.169.254")) {
-      return `Simulated SSRF Response:\n\nMetadata for ${uploadUrl}:\n{\n  "instance-id": "i-0123456789abcdef0",\n  "instance-type": "t3.micro",\n  "local-hostname": "ip-10-0-0-123.ec2.internal",\n  "local-ipv4": "10.0.0.123",\n  "public-hostname": "ec2-12-34-56-78.compute-1.amazonaws.com",\n  "public-ipv4": "12.34.56.78",\n  "security-groups": "hr-portal-ec2-sg",\n  "iam": {\n    "security-credentials": {\n      "hr-portal-ec2-role": {\n        "AccessKeyId": "ASIA...",\n        "SecretAccessKey": "SECRET...",\n        "Token": "TOKEN...",\n        "Expiration": "2023-12-31T23:59:59Z"\n      }\n    }\n  }\n}`;
-    } else {
-      // Generic SSRF response for other URLs
-      return `Simulated SSRF Response:\n\nContent from ${uploadUrl}:\n{\n  "status": "success",\n  "message": "SSRF vulnerability demonstrated successfully"\n}`;
+export const uploadDocument = async (file: File, uploadUrl: string): Promise<{ content: string; contentType: string }> => {
+  try {
+    // For SSRF exploitation attempts
+    if (uploadUrl.startsWith('http')) {
+      const response = await fetch(uploadUrl);
+      const contentType = response.headers.get('content-type') || 'text/plain';
+      const content = await response.text();
+      return { content, contentType };
     }
-  } else {
-    // For non-HTTP URLs like s3://, simulate upload success
-    return null;
+    
+    // For regular file uploads
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('destination', uploadUrl);
+    
+    // Read file content for preview
+    const content = await file.text();
+    return { 
+      content,
+      contentType: file.type || 'application/octet-stream'
+    };
+  } catch (error) {
+    console.error('Upload error:', error);
+    throw new Error('Failed to upload document or perform SSRF request');
   }
 };
 
