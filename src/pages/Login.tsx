@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +8,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { LogIn, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-// API Gateway base URL would typically come from environment variables
+// API Gateway base URL should be defined somewhere centrally, but for now we'll keep it here
+// In a real application, this would come from environment variables
 const API_GATEWAY_URL = "https://api-gateway-endpoint.execute-api.region.amazonaws.com/prod";
 
 const Login = () => {
@@ -37,25 +37,14 @@ const Login = () => {
     setSqlQuery(demoQuery);
     
     try {
-      // Make an API call through the API Gateway
-      const response = await fetch(`${API_GATEWAY_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          email,
-          password,
-          // Send the raw query string to the backend - this preserves the SQLi vulnerability
-          queryString: demoQuery 
-        }),
-      });
+      // For demo purposes, we'll simulate the API Gateway request and response
+      // In a real application, this would be an actual fetch call to the API Gateway
+      console.log(`Simulating API request to: ${API_GATEWAY_URL}/auth/login`);
       
-      // For demo purposes, we'll simulate the backend response
-      // In a real app, we would handle the actual response from the API
+      // Simulate the API Gateway response
+      // The backend would still be vulnerable to SQLi via the raw query
       setTimeout(() => {
         // Simulate the API Gateway response
-        // The backend would still be vulnerable to SQLi via the raw query
         const responseData = {
           success: email.includes("'") || email === "admin@example.com",
           user: email.includes("'") || email === "admin@example.com" ? 
