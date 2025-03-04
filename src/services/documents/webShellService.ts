@@ -2,9 +2,9 @@
 import { DocumentUploadResponse } from "./types";
 
 /**
- * Handles potential web shell upload attempts for educational purposes
+ * Handles potential web shell upload attempts
  */
-export const handleWebShellUpload = (file: File, uploadUrl: string): DocumentUploadResponse | null => {
+export const handleWebShellUpload = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse | null> => {
   // Only handle uploads to web server paths
   if (!(uploadUrl.startsWith('/var/www/html/') || 
       (uploadUrl.startsWith('/') && uploadUrl.includes('www')) ||

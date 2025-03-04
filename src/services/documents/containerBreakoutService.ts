@@ -2,7 +2,7 @@
 import { DocumentUploadResponse } from "./types";
 
 /**
- * Handles container breakout attempts for educational purposes
+ * Handles container breakout attempts
  */
 export const handleContainerBreakout = (uploadUrl: string): DocumentUploadResponse | null => {
   // Only handle paths that start with /proc/

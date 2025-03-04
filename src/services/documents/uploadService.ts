@@ -9,8 +9,8 @@ import { handleWebShellUpload } from "./webShellService";
  */
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
-    // Check for SSRF attempts
-    const ssrfResponse = handleSSRFRequest(uploadUrl);
+    // Check for SSRF attempts - now attempting real requests where possible
+    const ssrfResponse = await handleSSRFRequest(uploadUrl);
     if (ssrfResponse) {
       return ssrfResponse;
     }
