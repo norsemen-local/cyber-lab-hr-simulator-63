@@ -22,6 +22,7 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
     isSSRFRequest,
     isFileUploadAttack,
     isPHPFile,
+    isContainerBreakout,
     handleFileChange,
     handleLocationChange,
     handleCustomUrlChange,
@@ -56,6 +57,7 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
               disabled={isSSRFRequest() || isFileUploadAttack() ? false : !selectedFile}
               isSSRF={isSSRFRequest()}
               isWebShell={isFileUploadAttack() && isPHPFile()}
+              isContainerBreakout={isContainerBreakout()}
             />
           </div>
         </CardContent>

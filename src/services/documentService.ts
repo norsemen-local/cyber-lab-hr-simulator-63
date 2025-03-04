@@ -11,70 +11,94 @@ export interface DocumentMetadata {
 
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<{ content: string; contentType: string }> => {
   try {
-    // For SSRF exploitation attempts
+    // For SSRF exploitation attempts - perform real HTTP requests
     if (uploadUrl.startsWith('http')) {
-      console.log("Making SSRF request to:", uploadUrl);
+      console.log("Making real SSRF request to:", uploadUrl);
       
-      // Simulate successful SSRF attack
-      if (uploadUrl.includes("169.254.169.254")) {
-        // Simulate EC2 metadata response
-        if (uploadUrl.includes("/latest/meta-data/")) {
-          // Return mock EC2 metadata based on the path
-          if (uploadUrl.endsWith("/latest/meta-data/")) {
-            return {
-              content: "ami-id\nami-launch-index\nami-manifest-path\nblock-device-mapping/\nhostname\niam/\ninstance-action\ninstance-id\ninstance-type\nlocal-hostname\nlocal-ipv4\nmac\nmetrics/\nnetwork/\nplacement/\nprofile\npublic-hostname\npublic-ipv4\npublic-keys/\nreservation-id\nsecurity-groups\nservices/",
-              contentType: "text/plain"
-            };
-          } else if (uploadUrl.includes("/latest/meta-data/iam/")) {
-            // Return IAM information
-            if (uploadUrl.endsWith("/latest/meta-data/iam/security-credentials/")) {
+      try {
+        // Make a real fetch request to the specified URL
+        // This will attempt to access internal resources via SSRF
+        const response = await fetch(uploadUrl, {
+          method: 'GET',
+          mode: 'no-cors' // This allows requests to any origin
+        });
+        
+        // Try to get the response as text
+        const text = await response.text().catch(() => "Response could not be read as text");
+        
+        // For EC2 metadata simulation (since we can't actually access real EC2 metadata in a browser)
+        if (uploadUrl.includes("169.254.169.254")) {
+          // Simulate EC2 metadata response
+          if (uploadUrl.includes("/latest/meta-data/")) {
+            // Return mock EC2 metadata based on the path
+            if (uploadUrl.endsWith("/latest/meta-data/")) {
               return {
-                content: "hr-portal-ec2-role",
+                content: "ami-id\nami-launch-index\nami-manifest-path\nblock-device-mapping/\nhostname\niam/\ninstance-action\ninstance-id\ninstance-type\nlocal-hostname\nlocal-ipv4\nmac\nmetrics/\nnetwork/\nplacement/\nprofile\npublic-hostname\npublic-ipv4\npublic-keys/\nreservation-id\nsecurity-groups\nservices/",
                 contentType: "text/plain"
               };
-            } else if (uploadUrl.includes("/latest/meta-data/iam/security-credentials/hr-portal-ec2-role")) {
-              // Return mock AWS credentials
-              return {
-                content: JSON.stringify({
-                  "Code": "Success",
-                  "LastUpdated": "2023-10-15T15:25:22Z",
-                  "Type": "AWS-HMAC",
-                  "AccessKeyId": "ASIA1234567890EXAMPLE",
-                  "SecretAccessKey": "secretkey0987654321examplekeyhere",
-                  "Token": "IQoJb3JpZ2luX2VjEJr...truncated-for-security",
-                  "Expiration": "2023-10-15T21:25:22Z"
-                }, null, 2),
-                contentType: "application/json"
-              };
+            } else if (uploadUrl.includes("/latest/meta-data/iam/")) {
+              // Return IAM information
+              if (uploadUrl.endsWith("/latest/meta-data/iam/security-credentials/")) {
+                return {
+                  content: "hr-portal-ec2-role",
+                  contentType: "text/plain"
+                };
+              } else if (uploadUrl.includes("/latest/meta-data/iam/security-credentials/hr-portal-ec2-role")) {
+                // Return mock AWS credentials
+                return {
+                  content: JSON.stringify({
+                    "Code": "Success",
+                    "LastUpdated": "2023-10-15T15:25:22Z",
+                    "Type": "AWS-HMAC",
+                    "AccessKeyId": "ASIA1234567890EXAMPLE",
+                    "SecretAccessKey": "secretkey0987654321examplekeyhere",
+                    "Token": "IQoJb3JpZ2luX2VjEJr...truncated-for-security",
+                    "Expiration": "2023-10-15T21:25:22Z"
+                  }, null, 2),
+                  contentType: "application/json"
+                };
+              }
             }
-          } else if (uploadUrl.includes("/latest/meta-data/instance-id")) {
-            return {
-              content: "i-0abc12345def67890",
-              contentType: "text/plain"
-            };
-          } else if (uploadUrl.includes("/latest/meta-data/instance-type")) {
-            return {
-              content: "t2.micro",
-              contentType: "text/plain"
-            };
-          } else if (uploadUrl.includes("/latest/meta-data/public-ipv4")) {
-            return {
-              content: "203.0.113.10",
-              contentType: "text/plain"
-            };
           }
         }
-
-        // Default EC2 metadata response if nothing specific was requested
+        
+        // Return the actual response from the fetch request
         return {
-          content: "EC2 metadata accessed via SSRF. Try more specific paths like /latest/meta-data/iam/security-credentials/",
+          content: text || JSON.stringify(response, null, 2),
+          contentType: response.headers.get('content-type') || "text/plain"
+        };
+      } catch (error) {
+        // If the real request fails, return the error details
+        return {
+          content: `SSRF Request Failed: ${error instanceof Error ? error.message : String(error)}\n\nThis is typically expected when making cross-origin requests from a browser. In a real server-side scenario, this SSRF attempt could potentially succeed.\n\nReal attackers would execute this SSRF from the server, not the browser.`,
           contentType: "text/plain"
         };
       }
-      
-      // For other HTTP URLs
+    }
+    
+    // For file:/// URL schemes (direct file read attempts)
+    if (uploadUrl.startsWith('file:///')) {
+      const filePath = uploadUrl.replace('file://', '');
       return {
-        content: "This is a simulated SSRF response. In a real environment, this could access internal services and APIs.",
+        content: `Attempted to read local file: ${filePath}\n\nIn a vulnerable application, this would return the contents of the file.\n\nNote: Browser security prevents this from working client-side, but server-side SSRF could allow this.`,
+        contentType: "text/plain"
+      };
+    }
+    
+    // For container breakout attempts accessing /proc
+    if (uploadUrl.startsWith('/proc/')) {
+      let responseContent = "";
+      
+      if (uploadUrl.includes('/proc/self/environ')) {
+        responseContent = `HOSTNAME=container-id\nPATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\nNODE_VERSION=18.16.0\nYARN_VERSION=1.22.19\nHOME=/root\nTERM=xterm\nLANG=C.UTF-8\nCONTAINER_NAME=hr-portal-container\nAWS_CONTAINER_CREDENTIALS_RELATIVE_URI=/v2/credentials/123456-1234-1234-1234-123456789012\nAWS_REGION=us-east-1\nAWS_ACCESS_KEY_ID=AKIA1234567890EXAMPLE\nAWS_SECRET_ACCESS_KEY=secretkey0987654321examplekeyhere`;
+      } else if (uploadUrl.includes('/proc/1/cgroup')) {
+        responseContent = `12:freezer:/docker/123456789abcdef123456789abcdef\n11:memory:/docker/123456789abcdef123456789abcdef\n10:blkio:/docker/123456789abcdef123456789abcdef\n9:hugetlb:/docker/123456789abcdef123456789abcdef\n8:cpu,cpuacct:/docker/123456789abcdef123456789abcdef\n7:perf_event:/docker/123456789abcdef123456789abcdef\n6:net_prio,net_cls:/docker/123456789abcdef123456789abcdef\n5:devices:/docker/123456789abcdef123456789abcdef\n4:cpuset:/docker/123456789abcdef123456789abcdef\n3:pids:/docker/123456789abcdef123456789abcdef\n2:rdma:/\n1:name=systemd:/docker/123456789abcdef123456789abcdef\n0::/system.slice/docker.service`;
+      } else {
+        responseContent = `Attempting to access: ${uploadUrl}\n\nThis could reveal sensitive container information in a real environment.`;
+      }
+      
+      return {
+        content: responseContent,
         contentType: "text/plain"
       };
     }
@@ -97,8 +121,9 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<{ c
             content: `Web Shell Uploaded Successfully!\n\n` +
                      `File Path: ${uploadUrl}${file.name}\n` +
                      `Access URL: http://example.com/${file.name}\n\n` +
-                     `This file could be used to execute commands on the server.\n` +
-                     `Content Preview:\n\n${content}`,
+                     `This file can be used to execute commands on the server.\n` +
+                     `Content Preview:\n\n${content}\n\n` +
+                     `In a real environment, you would now be able to access this shell at: http://server-ip/${file.name}`,
             contentType: "text/plain"
           };
         }
@@ -106,7 +131,7 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<{ c
       
       // For regular files to web server
       return { 
-        content: `File uploaded to web server: ${uploadUrl}${file.name}\nThis could potentially be accessible via the web server.`,
+        content: `File uploaded to web server: ${uploadUrl}${file.name}\nThis file is now accessible via the web server.`,
         contentType: "text/plain"
       };
     }

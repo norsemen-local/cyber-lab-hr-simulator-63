@@ -1,7 +1,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Upload } from "lucide-react";
+import { AlertTriangle, Upload, Terminal } from "lucide-react";
 
 interface UploadButtonProps {
   onUpload: () => Promise<void>;
@@ -9,6 +9,7 @@ interface UploadButtonProps {
   disabled: boolean;
   isSSRF?: boolean;
   isWebShell?: boolean;
+  isContainerBreakout?: boolean;
 }
 
 const UploadButton = ({ 
@@ -16,13 +17,18 @@ const UploadButton = ({
   isUploading, 
   disabled, 
   isSSRF = false, 
-  isWebShell = false 
+  isWebShell = false,
+  isContainerBreakout = false
 }: UploadButtonProps) => {
   let buttonClasses = "bg-purple-600 hover:bg-purple-700";
   let icon = null;
   let buttonText = "Upload Document";
   
-  if (isSSRF) {
+  if (isContainerBreakout) {
+    buttonClasses = "bg-red-700 hover:bg-red-800 flex items-center justify-center gap-2";
+    icon = <Terminal className="h-4 w-4" />;
+    buttonText = "Execute Container Breakout";
+  } else if (isSSRF) {
     buttonClasses = "bg-amber-600 hover:bg-amber-700 flex items-center justify-center gap-2";
     icon = <AlertTriangle className="h-4 w-4" />;
     buttonText = "Send SSRF Request";

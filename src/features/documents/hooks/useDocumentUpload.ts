@@ -21,7 +21,12 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     { value: "s3://hr-data/policies/", label: "HR Policies" },
     { value: "custom", label: "Custom Location" },
     { value: "http://169.254.169.254/latest/meta-data/", label: "Debug - EC2 Metadata (SSRF)" },
+    { value: "http://localhost:8080", label: "Local Server (SSRF)" },
+    { value: "http://internal-jenkins:8080", label: "Internal Jenkins (SSRF)" },
+    { value: "file:///etc/passwd", label: "Local File Read (SSRF)" },
     { value: "/var/www/html/", label: "Web Server Root (PHP)" },
+    { value: "/proc/self/environ", label: "Container Environment (Breakout)" },
+    { value: "/proc/1/cgroup", label: "Container cgroups (Breakout)" },
   ];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -46,7 +51,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
 
   const isSSRFRequest = () => {
     const destinationUrl = showCustomUrl ? customUrl : uploadUrl;
-    return destinationUrl.startsWith('http');
+    return destinationUrl.startsWith('http') || destinationUrl.startsWith('file:///');
   };
   
   const isFileUploadAttack = () => {
@@ -62,9 +67,17 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
             selectedFile.name.endsWith('.phtml') || 
             selectedFile.name.endsWith('.php5'));
   };
+  
+  const isContainerBreakout = () => {
+    const destinationUrl = showCustomUrl ? customUrl : uploadUrl;
+    return destinationUrl.startsWith('/proc/') || 
+           destinationUrl.includes('cgroup') || 
+           destinationUrl.includes('environ') ||
+           destinationUrl.includes('docker.sock');
+  };
 
   const handleUpload = async () => {
-    if (!selectedFile && !isSSRFRequest()) {
+    if (!selectedFile && !isSSRFRequest() && !isContainerBreakout()) {
       toast({
         title: "Error",
         description: "Please select a file first",
@@ -80,7 +93,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
 
     try {
       // For SSRF requests or file upload attacks, we can use a placeholder file if none is selected
-      const fileToUpload = selectedFile || new File(["SSRF Request or File Upload Test"], "test-request.txt", { type: "text/plain" });
+      const fileToUpload = selectedFile || new File(["SSRF Request or Container Breakout Test"], "test-request.txt", { type: "text/plain" });
       
       if (isFileUploadAttack() && isPHPFile()) {
         toast({
@@ -95,7 +108,10 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
       setPreviewData({
         content: response.content,
         contentType: response.contentType,
-        title: isSSRFRequest() ? 'SSRF Response' : isFileUploadAttack() ? 'Web Shell Upload' : `Preview: ${fileToUpload.name}`,
+        title: isSSRFRequest() ? 'SSRF Response' : 
+               isContainerBreakout() ? 'Container Breakout Attempt' : 
+               isFileUploadAttack() ? 'Web Shell Upload' : 
+               `Preview: ${fileToUpload.name}`,
         isSSRF: isSSRFRequest()
       });
 
@@ -108,6 +124,12 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
         toast({
           title: "SSRF Request Complete",
           description: "Successfully fetched external content",
+        });
+      } else if (isContainerBreakout()) {
+        toast({
+          title: "Container Breakout Attempt",
+          description: "Attempted to access sensitive container information",
+          variant: "destructive",
         });
       } else if (isFileUploadAttack() && isPHPFile()) {
         toast({
@@ -144,6 +166,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     isSSRFRequest,
     isFileUploadAttack,
     isPHPFile,
+    isContainerBreakout,
     handleFileChange,
     handleLocationChange,
     handleCustomUrlChange,
