@@ -48,7 +48,7 @@ resource "aws_iam_policy" "ec2_s3_policy" {
 
 # IAM Policy for Lambda functions
 resource "aws_iam_policy" "jenkins_lambda_policy" {
-  name        = "jenkins-lambda-policy"
+  name        = "hr-portal-jenkins-lambda-policy"
   description = "Policy allowing Jenkins to create and invoke Lambda functions"
 
   policy = jsonencode({
@@ -71,7 +71,7 @@ resource "aws_iam_policy" "jenkins_lambda_policy" {
 
 # IAM Policy for Role Assumption and Modification
 resource "aws_iam_policy" "role_assumption_policy" {
-  name        = "jenkins-role-assumption-policy"
+  name        = "hr-portal-role-assumption-policy"
   description = "Policy allowing Jenkins to assume and modify roles"
 
   policy = jsonencode({
