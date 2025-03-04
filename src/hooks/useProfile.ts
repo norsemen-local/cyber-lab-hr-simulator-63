@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from 'react';
+import { useToast } from "@/components/ui/use-toast";
 
 interface UserProfile {
   id: string;
@@ -12,6 +13,7 @@ interface UserProfile {
   joinDate: string;
   manager: string;
   profileImage: string;
+  bio: string;
   address: {
     street: string;
     city: string;
@@ -37,12 +39,22 @@ interface UserProfile {
     name: string;
     date: string;
     type: string;
+    content?: string;
+  }[];
+  careerHistory: {
+    id: number;
+    company: string;
+    position: string;
+    startDate: string;
+    endDate: string;
+    description: string;
   }[];
 }
 
 export const useProfile = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     // Simulate API call
@@ -52,12 +64,13 @@ export const useProfile = () => {
         firstName: "Alex",
         lastName: "Johnson",
         email: "alex.johnson@techprosolutions.com",
-        phone: "555-123-4567", // Ensure phone is always a string
+        phone: "555-123-4567",
         position: "Senior Developer",
         department: "Engineering",
         joinDate: "2020-03-15",
         manager: "Sarah Williams",
         profileImage: "https://randomuser.me/api/portraits/men/32.jpg",
+        bio: "Experienced software developer with a passion for building scalable web applications. Specializing in React, Node.js, and cloud architecture.",
         address: {
           street: "123 Tech Lane",
           city: "San Francisco",
@@ -95,11 +108,37 @@ export const useProfile = () => {
           }
         ],
         documents: [
-          { id: 1, name: "Employment Contract", date: "2020-03-15", type: "Legal" },
-          { id: 2, name: "Performance Review 2021", date: "2021-12-10", type: "Review" },
-          { id: 3, name: "Training Certificate", date: "2022-05-20", type: "Certificate" },
-          { id: 4, name: "Benefits Documentation", date: "2023-01-05", type: "HR" },
-          { id: 5, name: "Project Proposal", date: "2023-06-18", type: "Work" }
+          { id: 1, name: "Employment Contract", date: "2020-03-15", type: "Legal", content: "This employment contract is made between TechPro Solutions and Alex Johnson..." },
+          { id: 2, name: "Performance Review 2021", date: "2021-12-10", type: "Review", content: "Annual performance review for Alex Johnson. Overall rating: Exceeds Expectations..." },
+          { id: 3, name: "Training Certificate", date: "2022-05-20", type: "Certificate", content: "This certifies that Alex Johnson has successfully completed the Advanced React Training..." },
+          { id: 4, name: "Benefits Documentation", date: "2023-01-05", type: "HR", content: "Summary of benefits for employees of TechPro Solutions..." },
+          { id: 5, name: "Project Proposal", date: "2023-06-18", type: "Work", content: "Proposal for new customer-facing application improvements..." }
+        ],
+        careerHistory: [
+          {
+            id: 1,
+            company: "TechPro Solutions",
+            position: "Senior Developer",
+            startDate: "March 2020",
+            endDate: "Present",
+            description: "Leading development of customer-facing applications, mentoring junior developers, and implementing CI/CD workflows."
+          },
+          {
+            id: 2,
+            company: "Innovate Tech",
+            position: "Software Developer",
+            startDate: "January 2018",
+            endDate: "February 2020",
+            description: "Developed and maintained web applications using React and Node.js, worked in agile teams."
+          },
+          {
+            id: 3,
+            company: "StartUp Co",
+            position: "Junior Developer",
+            startDate: "June 2016",
+            endDate: "December 2017",
+            description: "Built frontend components using React, collaborated with UX designers to implement responsive designs."
+          }
         ]
       });
       setLoading(false);
@@ -109,9 +148,50 @@ export const useProfile = () => {
   const updateProfile = (updatedProfile: Partial<UserProfile>) => {
     setProfile(prev => prev ? { ...prev, ...updatedProfile } : null);
     // In a real app, this would call an API to update the profile
-    console.log("Profile updated:", updatedProfile);
+    toast({
+      title: "Profile Updated",
+      description: "Your changes have been saved successfully",
+    });
     return true;
   };
 
-  return { profile, loading, updateProfile };
+  const updateCareerHistory = (careerHistory: UserProfile['careerHistory']) => {
+    setProfile(prev => prev ? { ...prev, careerHistory } : null);
+    toast({
+      title: "Career History Updated",
+      description: "Your career information has been updated",
+    });
+    return true;
+  };
+
+  const addDocument = (document: Omit<UserProfile['documents'][0], 'id'>) => {
+    setProfile(prev => {
+      if (!prev) return null;
+      const newId = prev.documents.length > 0 
+        ? Math.max(...prev.documents.map(d => d.id)) + 1 
+        : 1;
+      return {
+        ...prev,
+        documents: [...prev.documents, { ...document, id: newId }]
+      };
+    });
+    toast({
+      title: "Document Added",
+      description: `${document.name} has been uploaded successfully`,
+    });
+    return true;
+  };
+
+  const getDocument = (id: number) => {
+    return profile?.documents.find(doc => doc.id === id);
+  };
+
+  return { 
+    profile, 
+    loading, 
+    updateProfile, 
+    updateCareerHistory,
+    addDocument,
+    getDocument
+  };
 };

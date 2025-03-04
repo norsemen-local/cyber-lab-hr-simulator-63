@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DashboardWithSidebar from "../components/dashboard/DashboardWithSidebar";
 import { Card } from "@/components/ui/card";
@@ -12,8 +12,27 @@ import { useProfile } from "../hooks/useProfile";
 
 const Profile = () => {
   const { tab } = useParams();
+  const navigate = useNavigate();
   const activeTab = tab || "personal";
-  const { profile, loading, updateProfile } = useProfile();
+  const { profile, loading, updateProfile, updateCareerHistory, addDocument, getDocument } = useProfile();
+
+  const handleTabChange = (value: string) => {
+    navigate(`/profile/${value}`);
+  };
+
+  const handleUpdateProfile = (updatedProfile: any) => {
+    updateProfile({
+      firstName: updatedProfile.firstName,
+      lastName: updatedProfile.lastName,
+      email: updatedProfile.email,
+      phone: updatedProfile.phone,
+      position: updatedProfile.position,
+      department: updatedProfile.department,
+      manager: updatedProfile.manager,
+      bio: updatedProfile.bio,
+      address: updatedProfile.address
+    });
+  };
 
   if (loading) {
     return (
@@ -40,12 +59,12 @@ const Profile = () => {
               hireDate: profile?.joinDate || "",
               manager: profile?.manager || ""
             }}
-            setActiveTab={() => {}}
+            setActiveTab={handleTabChange}
           />
         </div>
         <div className="md:w-3/4">
           <Card className="p-6">
-            <Tabs value={activeTab} className="w-full">
+            <Tabs value={activeTab} className="w-full" onValueChange={handleTabChange}>
               <TabsList className="mb-6">
                 <TabsTrigger value="personal">Personal Info</TabsTrigger>
                 <TabsTrigger value="career">Career History</TabsTrigger>
@@ -55,41 +74,38 @@ const Profile = () => {
               <TabsContent value="personal" className="space-y-4">
                 <PersonalInfoTab 
                   userProfile={{
-                    name: `${profile?.firstName} ${profile?.lastName}`,
+                    firstName: profile?.firstName || "",
+                    lastName: profile?.lastName || "",
                     email: profile?.email || "",
                     phone: profile?.phone || "",
                     position: profile?.position || "",
                     department: profile?.department || "",
                     manager: profile?.manager || "",
-                    address: `${profile?.address.city}, ${profile?.address.state}`,
-                    bio: "No bio available"
+                    address: profile?.address || {
+                      street: "",
+                      city: "",
+                      state: "",
+                      zipCode: "",
+                      country: ""
+                    },
+                    bio: profile?.bio || ""
                   }}
-                  handleChange={() => {}}
-                  handleSaveChanges={() => updateProfile({})}
+                  onSave={handleUpdateProfile}
                 />
               </TabsContent>
               
               <TabsContent value="career" className="space-y-4">
                 <CareerHistoryTab 
-                  careerHistory={[]}
-                  handleDeleteExperience={() => {}}
-                  handleAddExperience={() => {}}
-                  newExperience={{
-                    company: "",
-                    position: "",
-                    startDate: "",
-                    endDate: "",
-                    description: ""
-                  }}
-                  handleNewExperienceChange={() => {}}
-                  isAddingExperience={false}
-                  setIsAddingExperience={() => {}}
+                  careerHistory={profile?.careerHistory || []}
+                  onSave={updateCareerHistory}
                 />
               </TabsContent>
               
               <TabsContent value="documents" className="space-y-4">
                 <DocumentsTab 
                   documents={profile?.documents || []}
+                  onUpload={addDocument}
+                  onView={getDocument}
                 />
               </TabsContent>
             </Tabs>
