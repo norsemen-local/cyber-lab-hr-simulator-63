@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -314,12 +313,12 @@ const ReviewsTab = () => {
                 </CardContent>
               </Card>
               
-              {(viewingReview.status === 'completed' || viewingReview.status === 'in-progress') && (
+              {viewingReview.status !== 'acknowledged' && (
                 <div className="flex justify-end">
                   <Button 
                     className="bg-purple-600 hover:bg-purple-700"
                     onClick={handleAcknowledgeReview}
-                    disabled={isSubmitting || viewingReview.status === 'acknowledged'}
+                    disabled={isSubmitting}
                   >
                     {isSubmitting ? "Processing..." : "Acknowledge Review"}
                   </Button>
