@@ -4,20 +4,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Navigate, useNavigate } from "react-router-dom";
-import { getCurrentUser, setCurrentUser } from "../services/authService";
+import { getCurrentUser, login, setCurrentUser } from "../services/authService";
 import { useToast } from "@/components/ui/use-toast";
-import { LogIn, AlertTriangle } from "lucide-react";
+import { LogIn, AlertTriangle, Database } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-// API Gateway base URL should be defined somewhere centrally, but for now we'll keep it here
-// In a real application, this would come from environment variables
-const API_GATEWAY_URL = "https://api-gateway-endpoint.execute-api.region.amazonaws.com/prod";
+// This would be the RDS endpoint in a real application
+const DB_ENDPOINT = "hr-portal-db.cluster-xxxxxxxxxx.us-east-1.rds.amazonaws.com";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [sqlQuery, setSqlQuery] = useState("");
+  const [showDbInfo, setShowDbInfo] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
   
@@ -37,35 +37,26 @@ const Login = () => {
   
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Email validation is now bypassed by default - no validation check
-    
     setLoading(true);
     
-    // Show SQL query that would be executed (for demo purposes)
+    // Show SQL query that would be executed
     const demoQuery = `SELECT * FROM users WHERE email='${email}' AND password='${password}'`;
     setSqlQuery(demoQuery);
     
     try {
-      // For demo purposes, we'll simulate the API Gateway request and response
-      // In a real application, this would be an actual fetch call to the API Gateway
-      console.log(`Simulating API request to: ${API_GATEWAY_URL}/auth/login`);
+      // Simulate connection to RDS
+      console.log(`[DB CONNECTION]: Connecting to MySQL database at ${DB_ENDPOINT}`);
       
-      // Simulate the API Gateway response
-      // The backend would still be vulnerable to SQLi via the raw query
+      // A small delay to simulate network latency to the database
       setTimeout(() => {
-        // Simulate the API Gateway response
-        const responseData = {
-          success: email.includes("'") || email === "admin@example.com",
-          user: email.includes("'") || email === "admin@example.com" ? 
-            { id: 1, name: "John Doe", email: "john@example.com", role: "employee" as "employee" | "manager" | "hr", avatar: "/placeholder.svg" } : null
-        };
+        // Call the login function which simulates executing SQL against a real database
+        const user = login(email, password);
         
-        if (responseData.success && responseData.user) {
-          setCurrentUser(responseData.user);
+        if (user) {
+          setCurrentUser(user);
           toast({
             title: "Logged in successfully",
-            description: `Welcome back, ${responseData.user.name}!`,
+            description: `Welcome back, ${user.name}!`,
           });
           navigate("/");
         } else {
@@ -82,7 +73,7 @@ const Login = () => {
       console.error("Login error:", error);
       toast({
         title: "Login failed",
-        description: "An error occurred during login via API Gateway",
+        description: "A database error occurred during login",
         variant: "destructive",
       });
       setLoading(false);
@@ -146,7 +137,7 @@ const Login = () => {
               {sqlQuery && (
                 <Alert variant="destructive" className="my-4">
                   <AlertTriangle className="h-4 w-4" />
-                  <AlertTitle>SQL Injection Demo</AlertTitle>
+                  <AlertTitle>SQL Injection Vulnerability</AlertTitle>
                   <AlertDescription className="font-mono text-xs break-all">
                     {sqlQuery}
                   </AlertDescription>
@@ -160,17 +151,43 @@ const Login = () => {
               
               <Button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all" disabled={loading}>
                 {loading ? 
-                  "Logging in..." : 
+                  "Connecting to database..." : 
                   <>
                     <LogIn className="mr-2 h-4 w-4" /> Log In
                   </>
                 }
               </Button>
+              
+              <div className="pt-2">
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full text-xs" 
+                  onClick={() => setShowDbInfo(!showDbInfo)}
+                >
+                  <Database className="mr-1 h-3 w-3" />
+                  {showDbInfo ? "Hide" : "Show"} Database Information
+                </Button>
+                
+                {showDbInfo && (
+                  <div className="mt-2 p-3 bg-slate-50 rounded text-xs">
+                    <p className="font-semibold">Database Configuration:</p>
+                    <ul className="list-disc pl-4 mt-1 space-y-1 text-slate-700">
+                      <li>Engine: MySQL 8.0</li>
+                      <li>Host: {DB_ENDPOINT}</li>
+                      <li>Schema: hr_portal</li>
+                      <li>Table: users</li>
+                      <li>Connection: Unencrypted (security vulnerability)</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
             </form>
           </CardContent>
           <CardFooter className="flex-col space-y-2">
             <p className="text-xs text-center w-full text-gray-500">
-              This application is deliberately vulnerable for security training purposes.
+              This application is intentionally vulnerable for security training.
             </p>
           </CardFooter>
         </Card>

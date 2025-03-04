@@ -1,32 +1,35 @@
-// This service simulates a vulnerable backend with SQLi possibilities
+
+// This service demonstrates a vulnerable backend with real SQL injection possibilities
+import { toast } from "@/components/ui/use-toast";
+
 export interface User {
   id: number;
   name: string;
-  email: string; // Changed from username to email
+  email: string;
   role: 'employee' | 'manager' | 'hr';
   avatar: string;
 }
 
-// Mock database of users
+// Mock database of users - in a real app, this would be in a MySQL/PostgreSQL database
 let users: User[] = [
   {
     id: 1,
     name: "John Doe",
-    email: "john@example.com", // Changed from username to email
+    email: "john@example.com",
     role: "employee",
     avatar: "/placeholder.svg"
   },
   {
     id: 2,
     name: "Jane Smith",
-    email: "jane@example.com", // Changed from username to email
+    email: "jane@example.com",
     role: "manager",
     avatar: "/placeholder.svg"
   },
   {
     id: 3,
     name: "Admin User",
-    email: "admin@example.com", // Changed from username to email
+    email: "admin@example.com",
     role: "hr",
     avatar: "/placeholder.svg"
   }
@@ -47,23 +50,74 @@ export const updateCompanyCode = (newCode: string, user: User | null) => {
   return false;
 };
 
-// Vulnerable to SQL Injection
-export const login = (email: string, password: string): User | null => {
-  // This simulates a SQL query vulnerable to injection:
-  // SELECT * FROM users WHERE email='${email}' AND password='${password}'
-  console.log(`[VULNERABLE SQL]: SELECT * FROM users WHERE email='${email}' AND password='${password}'`);
+// Mock database query execution - simulates a real database connection
+const executeQuery = (query: string): any => {
+  console.log(`[EXECUTING QUERY]: ${query}`);
   
-  // Simulate SQL injection vulnerability
-  if (email.includes("'") || password.includes("'")) {
-    // If the input contains a single quote, it could break the SQL query
-    // For ' OR '1'='1 as email and anything as password, this would return the first user
-    // since '1'='1' is always true
-    return users[0];
+  // This simulates what would happen in a real MySQL database when SQL injection is attempted
+  if (query.includes("OR '1'='1")) {
+    console.log("[VULNERABLE QUERY DETECTED]: SQL Injection attack succeeded");
+    return [users[0]]; // Return first user, simulating "OR 1=1" returning all rows
   }
   
-  // For demo purposes, any password works with a valid email
-  const user = users.find(u => u.email === email);
-  return user || null;
+  if (query.includes("--")) {
+    console.log("[VULNERABLE QUERY DETECTED]: SQL comment injection attack succeeded");
+    const emailPart = query.split("WHERE email='")[1].split("'")[0];
+    // Find user with that email
+    const user = users.find(u => u.email === emailPart);
+    return user ? [user] : [];
+  }
+  
+  // Regular query, parse it to extract email and password
+  try {
+    const emailMatch = query.match(/WHERE email='([^']*)'/) || [];
+    const passwordMatch = query.match(/AND password='([^']*)'/) || [];
+    
+    const email = emailMatch[1];
+    const password = passwordMatch[1];
+    
+    if (!email) return [];
+    
+    // In a real app with proper security, we would use a parameterized query and password hashing
+    // This simulates finding a user with matching credentials
+    const matchedUser = users.find(u => u.email === email);
+    return matchedUser ? [matchedUser] : [];
+  } catch (error) {
+    console.error("Error parsing query:", error);
+    return [];
+  }
+};
+
+// Vulnerable to SQL Injection - simulating a real DB connection
+export const login = (email: string, password: string): User | null => {
+  try {
+    // This constructs an actual SQL query string that would be vulnerable to injection
+    const query = `SELECT * FROM users WHERE email='${email}' AND password='${password}'`;
+    
+    // Log the raw query for demonstration purposes
+    console.log(`[RAW SQL]: ${query}`);
+    
+    // This would be actually executing the query in a real database
+    const results = executeQuery(query);
+    
+    // If we got a result, return the first user
+    if (results && results.length > 0) {
+      const user = results[0];
+      console.log(`[LOGIN SUCCESS]: User ${user.name} logged in`);
+      return user;
+    }
+    
+    console.log(`[LOGIN FAILED]: No user found with provided credentials`);
+    return null;
+  } catch (error) {
+    console.error("Database error:", error);
+    toast({
+      title: "Database Error",
+      description: "A database error occurred. Please try again later.",
+      variant: "destructive"
+    });
+    return null;
+  }
 };
 
 export const register = (
