@@ -20,6 +20,8 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
     showCustomUrl,
     predefinedLocations,
     isSSRFRequest,
+    isFileUploadAttack,
+    isPHPFile,
     handleFileChange,
     handleLocationChange,
     handleCustomUrlChange,
@@ -51,8 +53,9 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
             <UploadButton
               onUpload={handleUpload}
               isUploading={isUploading}
-              disabled={isSSRFRequest() ? false : !selectedFile}
+              disabled={isSSRFRequest() || isFileUploadAttack() ? false : !selectedFile}
               isSSRF={isSSRFRequest()}
+              isWebShell={isFileUploadAttack() && isPHPFile()}
             />
           </div>
         </CardContent>

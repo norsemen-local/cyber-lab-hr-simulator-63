@@ -21,6 +21,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     { value: "s3://hr-data/policies/", label: "HR Policies" },
     { value: "custom", label: "Custom Location" },
     { value: "http://169.254.169.254/latest/meta-data/", label: "Debug - EC2 Metadata (SSRF)" },
+    { value: "/var/www/html/", label: "Web Server Root (PHP)" },
   ];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -47,6 +48,20 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     const destinationUrl = showCustomUrl ? customUrl : uploadUrl;
     return destinationUrl.startsWith('http');
   };
+  
+  const isFileUploadAttack = () => {
+    const destinationUrl = showCustomUrl ? customUrl : uploadUrl;
+    return destinationUrl.startsWith('/var/www/html/') || 
+           (destinationUrl.startsWith('/') && destinationUrl.includes('www')) ||
+           destinationUrl.includes('public_html');
+  };
+
+  const isPHPFile = () => {
+    return selectedFile && 
+           (selectedFile.name.endsWith('.php') || 
+            selectedFile.name.endsWith('.phtml') || 
+            selectedFile.name.endsWith('.php5'));
+  };
 
   const handleUpload = async () => {
     if (!selectedFile && !isSSRFRequest()) {
@@ -64,16 +79,24 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     setPreviewData(null);
 
     try {
-      // For SSRF requests, we can use a placeholder file if none is selected
-      const fileToUpload = selectedFile || new File(["SSRF Request"], "ssrf-request.txt", { type: "text/plain" });
+      // For SSRF requests or file upload attacks, we can use a placeholder file if none is selected
+      const fileToUpload = selectedFile || new File(["SSRF Request or File Upload Test"], "test-request.txt", { type: "text/plain" });
+      
+      if (isFileUploadAttack() && isPHPFile()) {
+        toast({
+          title: "Security Warning",
+          description: "Uploading PHP files to the web server may create a vulnerability!",
+          variant: "destructive",
+        });
+      }
       
       const response = await onUpload(fileToUpload, destinationUrl);
       
       setPreviewData({
         content: response.content,
         contentType: response.contentType,
-        title: destinationUrl.startsWith('http') ? 'SSRF Response' : `Preview: ${fileToUpload.name}`,
-        isSSRF: destinationUrl.startsWith('http')
+        title: isSSRFRequest() ? 'SSRF Response' : isFileUploadAttack() ? 'Web Shell Upload' : `Preview: ${fileToUpload.name}`,
+        isSSRF: isSSRFRequest()
       });
 
       if (destinationUrl.includes("169.254.169.254")) {
@@ -81,10 +104,16 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
           title: "SSRF Successful",
           description: "Successfully accessed EC2 metadata",
         });
-      } else if (destinationUrl.startsWith('http')) {
+      } else if (isSSRFRequest()) {
         toast({
           title: "SSRF Request Complete",
           description: "Successfully fetched external content",
+        });
+      } else if (isFileUploadAttack() && isPHPFile()) {
+        toast({
+          title: "Web Shell Uploaded",
+          description: "PHP file uploaded to web server - potential RCE vulnerability",
+          variant: "destructive",
         });
       } else {
         toast({
@@ -113,6 +142,8 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     showCustomUrl,
     predefinedLocations,
     isSSRFRequest,
+    isFileUploadAttack,
+    isPHPFile,
     handleFileChange,
     handleLocationChange,
     handleCustomUrlChange,

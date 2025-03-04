@@ -11,6 +11,10 @@ import Profile from "./pages/Profile";
 import Team from "./pages/Team";
 import TimeManagement from "./pages/TimeManagement";
 import DocumentUpload from "./pages/DocumentUpload";
+import Notifications from "./pages/Notifications";
+import Messages from "./pages/Messages";
+import Settings from "./pages/Settings";
+import HelpSupport from "./pages/HelpSupport";
 import Footer from "./components/Footer";
 import { useEffect } from "react";
 import CompanyHeader from "./components/CompanyHeader";
@@ -49,6 +53,10 @@ const App = () => {
                 <Route path="/team/:tab" element={<Team />} />
                 <Route path="/time/*" element={<TimeManagement />} />
                 <Route path="/documents" element={<DocumentUpload />} />
+                <Route path="/notifications" element={<Notifications />} />
+                <Route path="/messages" element={<Messages />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/help" element={<HelpSupport />} />
                 {/* Redirect /register to /login */}
                 <Route path="/register" element={<Navigate to="/login" />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
