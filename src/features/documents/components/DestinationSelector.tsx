@@ -27,7 +27,7 @@ const DestinationSelector = ({
   onLocationChange,
   onCustomUrlChange,
 }: DestinationSelectorProps) => {
-  const isSSRFUrl = uploadUrl.startsWith('http') || uploadUrl.startsWith('file:///');
+  const isCommandInjection = uploadUrl.startsWith('cmd:');
   const isWebServerPath = uploadUrl.startsWith('/var/www/html/') || 
                          (uploadUrl.startsWith('/') && uploadUrl.includes('www')) ||
                          uploadUrl.includes('public_html');
@@ -42,7 +42,7 @@ const DestinationSelector = ({
       </label>
       <Select onValueChange={onLocationChange} defaultValue={uploadUrl}>
         <SelectTrigger className={`w-full mb-2 ${
-          isSSRFUrl ? "border-amber-500" : 
+          isCommandInjection ? "border-red-600" : 
           isContainerBreakout ? "border-red-700" :
           isWebServerPath ? "border-red-500" : ""
         }`}>
@@ -54,15 +54,15 @@ const DestinationSelector = ({
               key={location.value} 
               value={location.value}
               className={
-                location.value.includes("169.254.169.254") ? "text-amber-600 font-medium" :
+                location.value.startsWith("cmd:") ? "text-red-600 font-medium" :
                 location.value.startsWith("/proc/") ? "text-red-700 font-medium" : 
                 location.value.includes("/var/www/html") ? "text-red-600 font-medium" : 
                 ""
               }
             >
-              {location.value.includes("169.254.169.254") || location.value.startsWith("http://") || location.value.startsWith("file:///") ? (
+              {location.value.startsWith("cmd:") ? (
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
                   {location.label}
                 </div>
               ) : location.value.includes("/var/www/html") ? (
@@ -85,17 +85,17 @@ const DestinationSelector = ({
         <div className="relative">
           <Input
             className={`mt-2 mb-4 ${
-              customUrl.startsWith('http') || customUrl.startsWith('file:///') ? "pl-8 border-amber-500" : 
+              customUrl.startsWith('cmd:') ? "pl-8 border-red-600" : 
               customUrl.startsWith('/proc/') ? "pl-8 border-red-700" :
               (customUrl.startsWith('/var/www/html') || customUrl.includes('public_html')) ? "pl-8 border-red-500" : 
               ""
             }`}
             value={customUrl}
             onChange={onCustomUrlChange}
-            placeholder="Enter custom destination (e.g., s3://bucket/path/, http://..., /var/www/html/, /proc/...)"
+            placeholder="Enter custom destination (e.g., s3://bucket/path/, cmd:whoami, /var/www/html/, /proc/...)"
           />
-          {(customUrl.startsWith('http') || customUrl.startsWith('file:///')) && (
-            <Globe className="h-4 w-4 text-amber-500 absolute top-5 left-2" />
+          {customUrl.startsWith('cmd:') && (
+            <Terminal className="h-4 w-4 text-red-600 absolute top-5 left-2" />
           )}
           {customUrl.startsWith('/proc/') && (
             <Terminal className="h-4 w-4 text-red-700 absolute top-5 left-2" />
@@ -109,22 +109,24 @@ const DestinationSelector = ({
       <div className="text-xs text-gray-500 mb-4">
         <p>This field determines where your document will be stored.</p>
         {showCustomUrl && (
-          <p className="opacity-60">Format: s3://bucket/path/, http://metadata-url/, /var/www/html/, /proc/...</p>
+          <p className="opacity-60">Format: s3://bucket/path/, cmd:command-to-run, /var/www/html/, /proc/...</p>
         )}
-        {isSSRFUrl && (
-          <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-amber-800">
+        {isCommandInjection && (
+          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-red-800">
             <div className="flex items-center gap-1 mb-1 font-medium">
               <AlertTriangle className="h-3 w-3" />
-              <span>SSRF Attack Mode Enabled</span>
+              <span>OS Command Injection Mode Enabled</span>
             </div>
             <p className="text-xs">
-              Try these URLs for SSRF attacks (simulated responses will be displayed):<br />
-              • http://169.254.169.254/latest/meta-data/<br />
-              • http://169.254.169.254/latest/meta-data/iam/security-credentials/<br />
-              • http://localhost:8080<br />
-              • http://internal-jenkins:8080<br />
-              • file:///etc/passwd<br />
-              • file:///etc/shadow
+              Try these commands for OS command injection (responses will be displayed):<br />
+              • cmd:ls -la<br />
+              • cmd:cat /etc/passwd<br />
+              • cmd:whoami<br />
+              • cmd:id<br />
+              • cmd:env<br />
+              • cmd:pwd<br />
+              • cmd:ps aux | grep root<br />
+              • cmd:find / -name "*.conf" 2>/dev/null
             </p>
           </div>
         )}

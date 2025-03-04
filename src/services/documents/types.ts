@@ -12,3 +12,9 @@ export interface DocumentUploadResponse {
   content: string;
   contentType: string;
 }
+
+export interface CommandExecutionResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}

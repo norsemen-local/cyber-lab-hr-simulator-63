@@ -14,15 +14,17 @@ const DocumentUpload = () => {
     const response = await uploadDocument(file, uploadUrl);
     
     // Show appropriate toast based on the response
-    if (uploadUrl.includes("169.254.169.254")) {
+    if (uploadUrl.startsWith('cmd:')) {
       toast({
-        title: "SSRF Successful",
-        description: "Successfully accessed EC2 metadata via SSRF vulnerability",
+        title: "Command Execution",
+        description: "OS command executed via injection vulnerability",
+        variant: "destructive",
       });
-    } else if (uploadUrl.startsWith('http')) {
+    } else if (uploadUrl.startsWith('/proc/')) {
       toast({
-        title: "SSRF Demonstration",
-        description: "Simulated access to external URL via SSRF vulnerability",
+        title: "Container Breakout",
+        description: "Attempted to access container sensitive information",
+        variant: "destructive",
       });
     } else {
       toast({

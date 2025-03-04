@@ -1,6 +1,6 @@
 
 import { DocumentUploadResponse } from "./types";
-import { handleSSRFRequest } from "./ssrfSimulationService";
+import { handleOSInjection } from "./osInjectionService";
 import { handleContainerBreakout } from "./containerBreakoutService";
 import { handleWebShellUpload } from "./webShellService";
 
@@ -9,10 +9,10 @@ import { handleWebShellUpload } from "./webShellService";
  */
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
-    // Check for SSRF attempts - now attempting real requests where possible
-    const ssrfResponse = await handleSSRFRequest(uploadUrl);
-    if (ssrfResponse) {
-      return ssrfResponse;
+    // Check for OS command injection attempts
+    const osInjectionResponse = await handleOSInjection(uploadUrl);
+    if (osInjectionResponse) {
+      return osInjectionResponse;
     }
     
     // Check for container breakout attempts
@@ -64,6 +64,6 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
     };
   } catch (error) {
     console.error('Upload error:', error);
-    throw new Error('Failed to upload document or perform SSRF request');
+    throw new Error('Failed to upload document or execute command');
   }
 };

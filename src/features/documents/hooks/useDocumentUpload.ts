@@ -20,10 +20,10 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     { value: "s3://employee-bucket/reports/", label: "Employee Reports" },
     { value: "s3://hr-data/policies/", label: "HR Policies" },
     { value: "custom", label: "Custom Location" },
-    { value: "http://169.254.169.254/latest/meta-data/", label: "Debug - EC2 Metadata (SSRF)" },
-    { value: "http://localhost:8080", label: "Local Server (SSRF)" },
-    { value: "http://internal-jenkins:8080", label: "Internal Jenkins (SSRF)" },
-    { value: "file:///etc/passwd", label: "Local File Read (SSRF)" },
+    { value: "cmd:ls -la", label: "System Command - List Files (OS Injection)" },
+    { value: "cmd:cat /etc/passwd", label: "System Command - User Accounts (OS Injection)" },
+    { value: "cmd:whoami", label: "System Command - Current User (OS Injection)" },
+    { value: "cmd:env", label: "System Command - Environment Variables (OS Injection)" },
     { value: "/var/www/html/", label: "Web Server Root (Web Shell)" },
     { value: "/proc/self/environ", label: "Container Environment (Breakout)" },
     { value: "/proc/1/cgroup", label: "Container cgroups (Breakout)" },
@@ -49,9 +49,9 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     setUploadUrl(e.target.value);
   };
 
-  const isSSRFRequest = () => {
+  const isCommandInjection = () => {
     const destinationUrl = showCustomUrl ? customUrl : uploadUrl;
-    return destinationUrl.startsWith('http') || destinationUrl.startsWith('file:///');
+    return destinationUrl.startsWith('cmd:');
   };
   
   const isFileUploadAttack = () => {
@@ -92,7 +92,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
   };
 
   const handleUpload = async () => {
-    if (!selectedFile && !isSSRFRequest() && !isContainerBreakout()) {
+    if (!selectedFile && !isCommandInjection() && !isContainerBreakout()) {
       toast({
         title: "Error",
         description: "Please select a file first",
@@ -107,8 +107,8 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     setPreviewData(null);
 
     try {
-      // For SSRF requests or file upload attacks, we can use a placeholder file if none is selected
-      const fileToUpload = selectedFile || new File(["SSRF Request or Container Breakout Test"], "test-request.txt", { type: "text/plain" });
+      // For command injection or container breakout, we can use a placeholder file if none is selected
+      const fileToUpload = selectedFile || new File(["Command Execution Test"], "test-command.txt", { type: "text/plain" });
       
       if (isFileUploadAttack() && isWebShellFile()) {
         toast({
@@ -123,22 +123,18 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
       setPreviewData({
         content: response.content,
         contentType: response.contentType,
-        title: isSSRFRequest() ? 'SSRF Response' : 
+        title: isCommandInjection() ? 'Command Execution Results' : 
                isContainerBreakout() ? 'Container Breakout Attempt' : 
                isFileUploadAttack() && isWebShellFile() ? `Web Shell Upload (${isPHPFile() ? 'PHP' : isJSPFile() ? 'JSP' : 'Node.js'})` : 
                `Preview: ${fileToUpload.name}`,
-        isSSRF: isSSRFRequest()
+        isSSRF: false
       });
 
-      if (destinationUrl.includes("169.254.169.254")) {
+      if (isCommandInjection()) {
         toast({
-          title: "SSRF Successful",
-          description: "Successfully accessed EC2 metadata",
-        });
-      } else if (isSSRFRequest()) {
-        toast({
-          title: "SSRF Request Complete",
-          description: "Successfully fetched external content",
+          title: "Command Executed",
+          description: "OS command executed successfully",
+          variant: "destructive",
         });
       } else if (isContainerBreakout()) {
         toast({
@@ -162,7 +158,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
       console.error("Upload error:", error);
       toast({
         title: "Upload Failed",
-        description: "An error occurred during upload or SSRF request",
+        description: "An error occurred during upload or command execution",
         variant: "destructive",
       });
     } finally {
@@ -178,7 +174,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     customUrl,
     showCustomUrl,
     predefinedLocations,
-    isSSRFRequest,
+    isCommandInjection,
     isFileUploadAttack,
     isPHPFile,
     isJSPFile,
