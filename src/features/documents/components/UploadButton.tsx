@@ -1,7 +1,7 @@
 
 import React from "react";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, Upload, Terminal, Globe } from "lucide-react";
+import { AlertTriangle, Upload, Terminal, Globe, FileCode } from "lucide-react";
 
 interface UploadButtonProps {
   onUpload: () => Promise<void>;
@@ -34,7 +34,7 @@ const UploadButton = ({
     buttonText = "Send SSRF Request";
   } else if (isWebShell) {
     buttonClasses = "bg-red-600 hover:bg-red-700 flex items-center justify-center gap-2";
-    icon = <AlertTriangle className="h-4 w-4" />;
+    icon = <FileCode className="h-4 w-4" />;
     buttonText = "Upload Web Shell";
   }
   

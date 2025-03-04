@@ -21,7 +21,7 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
     predefinedLocations,
     isSSRFRequest,
     isFileUploadAttack,
-    isPHPFile,
+    isWebShellFile,
     isContainerBreakout,
     handleFileChange,
     handleLocationChange,
@@ -56,7 +56,7 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
               isUploading={isUploading}
               disabled={isSSRFRequest() || isFileUploadAttack() ? false : !selectedFile}
               isSSRF={isSSRFRequest()}
-              isWebShell={isFileUploadAttack() && isPHPFile()}
+              isWebShell={isFileUploadAttack() && isWebShellFile()}
               isContainerBreakout={isContainerBreakout()}
             />
           </div>

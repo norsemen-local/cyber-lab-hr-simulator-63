@@ -24,7 +24,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     { value: "http://localhost:8080", label: "Local Server (SSRF)" },
     { value: "http://internal-jenkins:8080", label: "Internal Jenkins (SSRF)" },
     { value: "file:///etc/passwd", label: "Local File Read (SSRF)" },
-    { value: "/var/www/html/", label: "Web Server Root (PHP)" },
+    { value: "/var/www/html/", label: "Web Server Root (Web Shell)" },
     { value: "/proc/self/environ", label: "Container Environment (Breakout)" },
     { value: "/proc/1/cgroup", label: "Container cgroups (Breakout)" },
   ];
@@ -68,6 +68,21 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
             selectedFile.name.endsWith('.php5'));
   };
   
+  const isJSPFile = () => {
+    return selectedFile && 
+           (selectedFile.name.endsWith('.jsp') || 
+            selectedFile.name.endsWith('.jspx'));
+  };
+  
+  const isNodeJSFile = () => {
+    return selectedFile && 
+           selectedFile.name.endsWith('.js');
+  };
+  
+  const isWebShellFile = () => {
+    return isPHPFile() || isJSPFile() || isNodeJSFile();
+  };
+  
   const isContainerBreakout = () => {
     const destinationUrl = showCustomUrl ? customUrl : uploadUrl;
     return destinationUrl.startsWith('/proc/') || 
@@ -95,10 +110,10 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
       // For SSRF requests or file upload attacks, we can use a placeholder file if none is selected
       const fileToUpload = selectedFile || new File(["SSRF Request or Container Breakout Test"], "test-request.txt", { type: "text/plain" });
       
-      if (isFileUploadAttack() && isPHPFile()) {
+      if (isFileUploadAttack() && isWebShellFile()) {
         toast({
           title: "Security Warning",
-          description: "Uploading PHP files to the web server may create a vulnerability!",
+          description: `Uploading ${isPHPFile() ? 'PHP' : isJSPFile() ? 'JSP' : 'JavaScript'} files to the web server creates a web shell vulnerability!`,
           variant: "destructive",
         });
       }
@@ -110,7 +125,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
         contentType: response.contentType,
         title: isSSRFRequest() ? 'SSRF Response' : 
                isContainerBreakout() ? 'Container Breakout Attempt' : 
-               isFileUploadAttack() ? 'Web Shell Upload' : 
+               isFileUploadAttack() && isWebShellFile() ? `Web Shell Upload (${isPHPFile() ? 'PHP' : isJSPFile() ? 'JSP' : 'Node.js'})` : 
                `Preview: ${fileToUpload.name}`,
         isSSRF: isSSRFRequest()
       });
@@ -131,10 +146,10 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
           description: "Attempted to access sensitive container information",
           variant: "destructive",
         });
-      } else if (isFileUploadAttack() && isPHPFile()) {
+      } else if (isFileUploadAttack() && isWebShellFile()) {
         toast({
           title: "Web Shell Uploaded",
-          description: "PHP file uploaded to web server - potential RCE vulnerability",
+          description: `${isPHPFile() ? 'PHP' : isJSPFile() ? 'JSP' : 'JavaScript'} web shell uploaded - potential RCE vulnerability`,
           variant: "destructive",
         });
       } else {
@@ -166,6 +181,9 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     isSSRFRequest,
     isFileUploadAttack,
     isPHPFile,
+    isJSPFile,
+    isNodeJSFile,
+    isWebShellFile,
     isContainerBreakout,
     handleFileChange,
     handleLocationChange,

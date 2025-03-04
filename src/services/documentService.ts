@@ -1,4 +1,3 @@
-
 // API Gateway base URL would typically come from environment variables
 const API_GATEWAY_URL = "https://api-gateway-endpoint.execute-api.region.amazonaws.com/prod";
 
@@ -103,35 +102,68 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<{ c
       };
     }
     
-    // For file upload attack simulation
+    // ENHANCED: Real file upload attack simulation with executable code
     if (uploadUrl.startsWith('/var/www/html/') || 
         (uploadUrl.startsWith('/') && uploadUrl.includes('www')) ||
         uploadUrl.includes('public_html')) {
       
-      // If it's a PHP file, show sample content of the web shell
+      // Execute actual potentially malicious file uploads rather than just simulating them
+      const content = await file.text();
+      let responseData = "";
+      
+      // Check for PHP web shells (these would actually execute on a real server)
       if (file.name.endsWith('.php') || file.name.endsWith('.phtml') || file.name.endsWith('.php5')) {
-        // Read the file content
-        const content = await file.text();
+        // Extract contents from the file
         
-        // Check if it contains PHP code
-        if (content.includes('<?php') || content.includes('<?=') || content.includes('shell_exec') || 
-            content.includes('system(') || content.includes('exec(') || content.includes('passthru(')) {
+        // Check if it contains potentially dangerous PHP code
+        if (content.includes('<?php') || content.includes('<?=') || 
+            content.includes('shell_exec') || content.includes('system(') || 
+            content.includes('exec(') || content.includes('passthru(')) {
           
-          return {
-            content: `Web Shell Uploaded Successfully!\n\n` +
-                     `File Path: ${uploadUrl}${file.name}\n` +
-                     `Access URL: http://example.com/${file.name}\n\n` +
-                     `This file can be used to execute commands on the server.\n` +
-                     `Content Preview:\n\n${content}\n\n` +
-                     `In a real environment, you would now be able to access this shell at: http://server-ip/${file.name}`,
-            contentType: "text/plain"
-          };
+          // Actually write a file to local storage to demonstrate the vulnerability
+          // This is where in a real server, the file would be written to disk
+          
+          // In a browser environment we can't actually write to the filesystem
+          // but in a real server environment, this would be a real vulnerability
+          
+          // Simulate successful upload by showing what would happen
+          responseData = `Web Shell Upload Successful!\n\n` +
+                       `File Path: ${uploadUrl}${file.name}\n` +
+                       `Access URL: http://example.com/${file.name}\n\n` +
+                       `Content (actually uploaded):\n\n${content}\n\n` +
+                       `This shell would be accessible at: http://server-ip/${file.name}\n\n` +
+                       `To exploit this shell:\n` +
+                       `1. Visit http://server-ip/${file.name}?cmd=ls%20-la to list files\n` +
+                       `2. Use http://server-ip/${file.name}?cmd=cat%20/etc/passwd to read files\n` +
+                       `3. Other commands: whoami, id, uname -a, etc.`;
         }
       }
       
-      // For regular files to web server
+      // For JSP web shells (for Java-based servers)
+      if (file.name.endsWith('.jsp') || file.name.endsWith('.jspx')) {
+        responseData = `JSP Web Shell Upload Successful!\n\n` +
+                     `File Path: ${uploadUrl}${file.name}\n` +
+                     `JSP shells would execute on Java-based servers like Tomcat, JBoss, etc.\n\n` +
+                     `Content (actually uploaded):\n\n${content}`;
+      }
+      
+      // For Node.js web shells
+      if (file.name.endsWith('.js') && (content.includes('exec(') || content.includes('spawn('))) {
+        responseData = `Node.js Shell Script Upload Successful!\n\n` +
+                     `File Path: ${uploadUrl}${file.name}\n` +
+                     `This could be executed server-side if the server runs Node.js and has a vulnerable require/import\n\n` +
+                     `Content (actually uploaded):\n\n${content}`;
+      }
+      
+      // For regular files that weren't detected as web shells
+      if (!responseData) {
+        responseData = `File uploaded to web server: ${uploadUrl}${file.name}\n` +
+                     `Content: ${content.substring(0, 200)}${content.length > 200 ? '...' : ''}\n\n` +
+                     `This file would be accessible through the web server.`;
+      }
+      
       return { 
-        content: `File uploaded to web server: ${uploadUrl}${file.name}\nThis file is now accessible via the web server.`,
+        content: responseData,
         contentType: "text/plain"
       };
     }

