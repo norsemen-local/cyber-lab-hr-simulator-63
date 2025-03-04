@@ -43,8 +43,13 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     setUploadUrl(e.target.value);
   };
 
+  const isSSRFRequest = () => {
+    const destinationUrl = showCustomUrl ? customUrl : uploadUrl;
+    return destinationUrl.startsWith('http');
+  };
+
   const handleUpload = async () => {
-    if (!selectedFile) {
+    if (!selectedFile && !isSSRFRequest()) {
       toast({
         title: "Error",
         description: "Please select a file first",
@@ -59,12 +64,15 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     setPreviewData(null);
 
     try {
-      const response = await onUpload(selectedFile, destinationUrl);
+      // For SSRF requests, we can use a placeholder file if none is selected
+      const fileToUpload = selectedFile || new File(["SSRF Request"], "ssrf-request.txt", { type: "text/plain" });
+      
+      const response = await onUpload(fileToUpload, destinationUrl);
       
       setPreviewData({
         content: response.content,
         contentType: response.contentType,
-        title: destinationUrl.startsWith('http') ? 'SSRF Response' : `Preview: ${selectedFile.name}`,
+        title: destinationUrl.startsWith('http') ? 'SSRF Response' : `Preview: ${fileToUpload.name}`,
         isSSRF: destinationUrl.startsWith('http')
       });
 
@@ -81,14 +89,14 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
       } else {
         toast({
           title: "Upload Successful",
-          description: `File ${selectedFile.name} uploaded`,
+          description: `File ${fileToUpload.name} uploaded`,
         });
       }
     } catch (error) {
       console.error("Upload error:", error);
       toast({
         title: "Upload Failed",
-        description: "An error occurred during upload",
+        description: "An error occurred during upload or SSRF request",
         variant: "destructive",
       });
     } finally {
@@ -104,6 +112,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     customUrl,
     showCustomUrl,
     predefinedLocations,
+    isSSRFRequest,
     handleFileChange,
     handleLocationChange,
     handleCustomUrlChange,

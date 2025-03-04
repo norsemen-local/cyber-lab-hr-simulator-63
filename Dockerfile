@@ -1,9 +1,20 @@
 
-# Use Node.js as base image
-FROM node:18-alpine
+# Use Node.js image based on Debian (not Alpine) to have more system utilities
+FROM node:18
 
 # Set working directory
 WORKDIR /app
+
+# Install additional system utilities and bash
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    vim \
+    git \
+    net-tools \
+    iputils-ping \
+    dnsutils \
+    && apt-get clean
 
 # Copy package files
 COPY package*.json ./

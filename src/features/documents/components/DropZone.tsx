@@ -2,7 +2,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Upload } from "lucide-react";
+import { Upload, FileText } from "lucide-react";
 
 interface DropZoneProps {
   onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -27,7 +27,10 @@ const DropZone = ({ onFileChange, selectedFile }: DropZoneProps) => {
         Select File
       </Button>
       {selectedFile && (
-        <p className="mt-2 text-sm">Selected: {selectedFile.name}</p>
+        <div className="mt-3 flex items-center justify-center gap-2 text-sm font-medium">
+          <FileText className="h-4 w-4 text-purple-600" />
+          <span>Selected: {selectedFile.name}</span>
+        </div>
       )}
     </div>
   );

@@ -19,6 +19,7 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
     customUrl,
     showCustomUrl,
     predefinedLocations,
+    isSSRFRequest,
     handleFileChange,
     handleLocationChange,
     handleCustomUrlChange,
@@ -50,7 +51,8 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
             <UploadButton
               onUpload={handleUpload}
               isUploading={isUploading}
-              disabled={!selectedFile}
+              disabled={isSSRFRequest() ? false : !selectedFile}
+              isSSRF={isSSRFRequest()}
             />
           </div>
         </CardContent>
