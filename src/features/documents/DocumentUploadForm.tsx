@@ -99,7 +99,7 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
                   </a>
                 </div>
                 <div className="mt-2 text-xs text-green-600">
-                  ✓ This URL is publicly accessible through your AWS Load Balancer
+                  ✓ This URL is publicly accessible!
                 </div>
               </div>
             )}

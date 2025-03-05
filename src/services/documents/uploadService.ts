@@ -1,44 +1,50 @@
 
 import { DocumentUploadResponse } from "./types";
 import { handleWebShellUpload } from "./webShellService";
+import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 
 // Define the absolute upload directory path
-// Using a directory that should be writable on most systems
-const UPLOAD_DIR = '/tmp/hr-portal-uploads';
+// Using public directory to make files accessible via the web server
+const UPLOAD_DIR = './public/uploads';
 
-// Mock function to simulate directory creation since we can't use fs in browser
+// Function to ensure directory exists
 function ensureDirectoryExists(dirPath: string) {
-  console.log(`[Simulation] Ensuring directory exists at: ${dirPath}`);
-  // In a real Node.js environment, you would use fs.mkdirSync here
+  console.log(`Creating directory at: ${dirPath}`);
+  if (!fs.existsSync(dirPath)) {
+    try {
+      fs.mkdirSync(dirPath, { recursive: true });
+      console.log(`Directory created at: ${dirPath}`);
+    } catch (error) {
+      console.error(`Failed to create directory: ${dirPath}`, error);
+    }
+  }
 }
 
-// Simulate creating upload directory
+// Create upload directory
 ensureDirectoryExists(UPLOAD_DIR);
 
 /**
  * Handles document uploads and file upload vulnerability demonstrations
- * Actually simulates saving files to the filesystem
+ * Actually saves files to the filesystem in the public directory
  */
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
-    // Generate a unique filename with timestamp
-    const timestamp = new Date().getTime();
-    const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const filename = `${timestamp}-${sanitizedName}`;
+    // SECURITY VULNERABILITY: No sanitization of filename
+    // This allows path traversal attacks
+    const filename = file.name;
     
-    // Define the absolute file path where file would be saved
-    const filePath = `${UPLOAD_DIR}/${filename}`;
+    // Define the absolute file path where file will be saved
+    // SECURITY VULNERABILITY: Not properly sanitizing file paths
+    const filePath = path.join(UPLOAD_DIR, filename);
     
-    // Generate a real ALB URL for accessing the file
-    // Use the load balancer DNS name from your AWS infrastructure
-    const alb_dns_name = "hr-portal-alb-12345.us-east-1.elb.amazonaws.com";
+    // Generate a real accessible URL for the file
+    const baseUrl = window.location.origin;
+    const fileUrl = `${baseUrl}/uploads/${filename}`;
     
-    // Real ALB path to the document
-    const fileUrl = `http://${alb_dns_name}/documents/${filename}`;
-    
-    // Log the filesystem path that would be used
-    console.log(`[Simulation] Saving file to disk at: ${filePath}`);
-    console.log(`[Real] File will be accessible at: ${fileUrl}`);
+    console.log(`Saving file to disk at: ${filePath}`);
+    console.log(`File will be accessible at: ${fileUrl}`);
     
     // Check if this is a potential web shell upload
     if (file.name.endsWith('.php') || file.name.endsWith('.jsp') || 
@@ -54,36 +60,27 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       }
     }
     
-    // Simulate writing the file to disk
-    console.log(`[Simulation] Successfully saved file to: ${filePath}`);
+    // Save the file to disk (ACTUAL file writing, not simulation)
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    try {
+      fs.writeFileSync(filePath, buffer);
+      console.log(`Successfully saved file to: ${filePath}`);
+    } catch (error) {
+      console.error(`Error writing file to ${filePath}:`, error);
+      throw new Error(`Failed to write file: ${error}`);
+    }
     
     // For images and PDFs, read as base64 data to return in the response
     const contentType = file.type || 'application/octet-stream';
     if (contentType.includes('image') || contentType.includes('pdf')) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        
-        reader.onload = (event) => {
-          if (event.target && event.target.result) {
-            // Return the base64 data along with file path info
-            resolve({ 
-              content: event.target.result.toString(),
-              contentType,
-              fileUrl,
-              savedAt: filePath // Include the actual file system path
-            });
-          } else {
-            reject(new Error('Failed to read file'));
-          }
-        };
-        
-        reader.onerror = () => {
-          reject(new Error('Failed to read file'));
-        };
-        
-        // Read the file as a data URL (base64)
-        reader.readAsDataURL(file);
-      });
+      return {
+        content: `data:${contentType};base64,${buffer.toString('base64')}`,
+        contentType,
+        fileUrl,
+        savedAt: filePath
+      };
     }
     
     // For text files and other file types, read as text
@@ -92,7 +89,7 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       content,
       contentType,
       fileUrl,
-      savedAt: filePath // Include the actual file system path
+      savedAt: filePath
     };
   } catch (error) {
     console.error('Upload error:', error);
