@@ -108,14 +108,15 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       // Generate simulated response with client-side data
       const filePath = uploadPath + '/' + filename;
       const fileUrl = `${window.location.origin}/uploads/${filename}`;
+      const fileContentType = file.type || 'application/octet-stream';
       
       // For images and PDFs, read as base64 data for the response
-      if (contentType.includes('image') || contentType.includes('pdf')) {
+      if (fileContentType.includes('image') || fileContentType.includes('pdf')) {
         // Convert blob to base64
         const base64 = arrayBufferToBase64(blob);
         return {
-          content: `data:${contentType};base64,${base64}`,
-          contentType,
+          content: `data:${fileContentType};base64,${base64}`,
+          contentType: fileContentType,
           fileUrl,
           savedAt: filePath
         };
@@ -125,7 +126,7 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       const content = await file.text();
       return { 
         content,
-        contentType: file.type || 'application/octet-stream',
+        contentType: fileContentType,
         fileUrl,
         savedAt: filePath
       };
