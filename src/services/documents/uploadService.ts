@@ -1,26 +1,12 @@
 
 import { DocumentUploadResponse } from "./types";
-import { handleOSInjection } from "./osInjectionService";
-import { handleContainerBreakout } from "./containerBreakoutService";
 import { handleWebShellUpload } from "./webShellService";
 
 /**
- * Handles document uploads and various security demonstrations
+ * Handles document uploads and file upload vulnerability demonstrations
  */
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
-    // Check for OS command injection attempts
-    const osInjectionResponse = await handleOSInjection(uploadUrl);
-    if (osInjectionResponse) {
-      return osInjectionResponse;
-    }
-    
-    // Check for container breakout attempts
-    const containerBreakoutResponse = handleContainerBreakout(uploadUrl);
-    if (containerBreakoutResponse) {
-      return containerBreakoutResponse;
-    }
-    
     // Check for web shell uploads
     const webShellResponse = await handleWebShellUpload(file, uploadUrl);
     if (webShellResponse) {
@@ -64,6 +50,6 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
     };
   } catch (error) {
     console.error('Upload error:', error);
-    throw new Error('Failed to upload document or execute command');
+    throw new Error('Failed to upload document');
   }
 };

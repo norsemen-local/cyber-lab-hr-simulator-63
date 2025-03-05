@@ -3,7 +3,6 @@ import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import PreviewWindow from "@/components/PreviewWindow";
 import DropZone from "./components/DropZone";
-import DestinationSelector from "./components/DestinationSelector";
 import UploadButton from "./components/UploadButton";
 import { useDocumentUpload } from "./hooks/useDocumentUpload";
 
@@ -16,16 +15,10 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
     selectedFile,
     isUploading,
     previewData,
-    customUrl,
-    showCustomUrl,
-    predefinedLocations,
-    isCommandInjection,
+    s3Bucket,
     isFileUploadAttack,
     isWebShellFile,
-    isContainerBreakout,
     handleFileChange,
-    handleLocationChange,
-    handleCustomUrlChange,
     handleUpload,
   } = useDocumentUpload({ onUpload });
 
@@ -41,23 +34,16 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
               onFileChange={handleFileChange}
               selectedFile={selectedFile}
             />
-
-            <DestinationSelector
-              uploadUrl={showCustomUrl ? customUrl : predefinedLocations[0].value}
-              customUrl={customUrl}
-              showCustomUrl={showCustomUrl}
-              predefinedLocations={predefinedLocations}
-              onLocationChange={handleLocationChange}
-              onCustomUrlChange={handleCustomUrlChange}
-            />
+            
+            <div className="text-sm text-gray-500 mb-4">
+              Your file will be uploaded to: <span className="font-medium">{s3Bucket}</span>
+            </div>
             
             <UploadButton
               onUpload={handleUpload}
               isUploading={isUploading}
-              disabled={isCommandInjection() || isFileUploadAttack() ? false : !selectedFile}
+              disabled={!selectedFile}
               isWebShell={isFileUploadAttack() && isWebShellFile()}
-              isContainerBreakout={isContainerBreakout()}
-              isCommandInjection={isCommandInjection()}
             />
           </div>
         </CardContent>
@@ -68,7 +54,7 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
           content={previewData.content}
           contentType={previewData.contentType}
           title={previewData.title}
-          isSSRF={previewData.isSSRF}
+          isSSRF={false}
         />
       )}
     </div>
