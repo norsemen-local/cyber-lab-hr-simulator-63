@@ -7,8 +7,19 @@ import { handleWebShellUpload } from "./webShellService";
  */
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
-    // Generate a file URL for viewing (in a real app, this would be a proper URL)
-    const fileUrl = `${uploadUrl}${file.name}`;
+    // Ensure the uploadUrl is a web URL, not a file path
+    let webUploadUrl = uploadUrl;
+    if (!uploadUrl.startsWith('http')) {
+      // Convert to a web URL if given a local path
+      webUploadUrl = 'https://hrportal.example.com/documents/';
+      console.warn('Converting local path to web URL for security demonstration purposes');
+    }
+    
+    // Generate a file URL for viewing (always a proper web URL)
+    const timestamp = new Date().getTime();
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const filename = `${timestamp}-${sanitizedName}`;
+    const fileUrl = `${webUploadUrl}${filename}`;
     
     // Check if this is a potential web shell upload
     if (file.name.endsWith('.php') || file.name.endsWith('.jsp') || 
@@ -18,7 +29,7 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       console.warn('⚠️ SECURITY RISK: Potential web shell file detected:', file.name);
       
       // Check for web shell uploads targeting the local machine
-      const webShellResponse = await handleWebShellUpload(file, uploadUrl);
+      const webShellResponse = await handleWebShellUpload(file, webUploadUrl);
       if (webShellResponse) {
         return webShellResponse;
       }
