@@ -2,9 +2,9 @@
 import { DocumentUploadResponse } from "./types";
 import { handleWebShellUpload } from "./webShellService";
 
-// Define the upload directory within the public folder
-// This ensures uploaded files are accessible via the web server
-const UPLOAD_DIR = './public/uploads';
+// Define the backend server URL
+// In production, this would come from environment variables
+const API_URL = 'http://localhost:3000'; // Default to localhost for development
 
 /**
  * Handles document uploads and file upload vulnerability demonstrations
@@ -16,16 +16,16 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
     // This allows path traversal attacks
     const filename = file.name;
     
-    // Define the file path where file would be saved
-    // SECURITY VULNERABILITY: Not properly sanitizing file paths
-    const filePath = UPLOAD_DIR + '/' + filename;
+    // Create form data for the file upload
+    const formData = new FormData();
+    formData.append('file', file);
     
-    // Generate a real accessible URL for the file
-    const baseUrl = window.location.origin;
-    const fileUrl = `${baseUrl}/uploads/${filename}`;
+    // SECURITY VULNERABILITY: Path traversal in upload path
+    // This allows an attacker to specify any directory on the server
+    const uploadPath = '../' + (uploadUrl.replace('https://', '').replace('http://', ''));
+    formData.append('uploadPath', uploadPath);
     
-    console.log(`File would be saved to disk at: ${filePath}`);
-    console.log(`File would be accessible at: ${fileUrl}`);
+    console.log(`Attempting to upload to path: ${uploadPath}`);
     
     // Check if this is a potential web shell upload
     if (file.name.endsWith('.php') || file.name.endsWith('.jsp') || 
@@ -35,13 +35,59 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       console.warn('⚠️ SECURITY RISK: Potential web shell file detected:', file.name);
       
       // Process web shell uploads
-      const webShellResponse = await handleWebShellUpload(file, fileUrl, filePath);
+      const webShellResponse = await handleWebShellUpload(file, uploadUrl, uploadPath);
       if (webShellResponse) {
         return webShellResponse;
       }
     }
     
     try {
+      // Upload the file to our server
+      const response = await fetch(`${API_URL}/api/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('Upload response:', data);
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Upload failed');
+      }
+      
+      // For images and PDFs, fetch the file content to display in the preview
+      const contentType = file.type || 'application/octet-stream';
+      if (contentType.includes('image') || contentType.includes('pdf')) {
+        // Convert file to base64
+        const blob = await file.arrayBuffer();
+        const base64 = arrayBufferToBase64(blob);
+        
+        return {
+          content: `data:${contentType};base64,${base64}`,
+          contentType,
+          fileUrl: data.file.url,
+          savedAt: data.file.path
+        };
+      }
+      
+      // For text files and other file types, read as text
+      const content = await file.text();
+      return { 
+        content,
+        contentType: file.type || 'application/octet-stream',
+        fileUrl: data.file.url,
+        savedAt: data.file.path
+      };
+    } catch (error) {
+      console.error('Error with server upload:', error);
+      
+      // Fall back to client-side simulation if server upload fails
+      console.log('Falling back to client-side simulation...');
+      
       // Create a blob from the file
       const blob = await file.arrayBuffer();
       
@@ -59,8 +105,11 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       
       console.log(`File ${filename} has been prepared for download`);
       
-      // For images and PDFs, read as base64 data to return in the response
-      const contentType = file.type || 'application/octet-stream';
+      // Generate simulated response with client-side data
+      const filePath = uploadPath + '/' + filename;
+      const fileUrl = `${window.location.origin}/uploads/${filename}`;
+      
+      // For images and PDFs, read as base64 data for the response
       if (contentType.includes('image') || contentType.includes('pdf')) {
         // Convert blob to base64
         const base64 = arrayBufferToBase64(blob);
@@ -80,9 +129,6 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
         fileUrl,
         savedAt: filePath
       };
-    } catch (error) {
-      console.error('Error saving file:', error);
-      throw new Error(`Failed to save file: ${error}`);
     }
   } catch (error) {
     console.error('Upload error:', error);
