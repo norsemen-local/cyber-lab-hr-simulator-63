@@ -23,6 +23,14 @@ export const useUploadState = () => {
   const setUploadComplete = (data: PreviewData) => {
     setPreviewData(data);
     setIsUploading(false);
+    
+    // Show a toast with a link to the file if available
+    if (data.fileUrl) {
+      toast({
+        title: "Upload Complete",
+        description: "Your file is now accessible via URL",
+      });
+    }
   };
 
   const setUploadError = (errorMessage: string) => {

@@ -45,7 +45,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
       const localFilePath = `/home/user/documents/`;
       const response = await onUpload(selectedFile, localFilePath);
       
-      // Create preview data
+      // Create preview data with file URL
       const newPreviewData: PreviewData = {
         content: response.content,
         contentType: response.contentType,
@@ -53,7 +53,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
               `Web Shell Upload (${getFileTypeLabel(selectedFile)})` : 
               `Preview: ${selectedFile.name}`,
         isSSRF: false,
-        fileUrl: response.fileUrl
+        fileUrl: response.fileUrl || `file://${localFilePath}${selectedFile.name}` // Ensure we always have a fileUrl
       };
 
       setUploadComplete(newPreviewData);

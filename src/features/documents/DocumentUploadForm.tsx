@@ -6,7 +6,7 @@ import DropZone from "./components/DropZone";
 import UploadButton from "./components/UploadButton";
 import { useDocumentUpload } from "./hooks/useDocumentUpload";
 import { isWebShellFile } from "./utils/fileTypeUtils";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Link } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DocumentUploadFormProps {
@@ -70,19 +70,30 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
           {previewData.fileUrl && (
             <div className="mt-4 flex flex-col space-y-2">
               <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
-                <div className="font-medium">File URL:</div>
-                <code className="text-xs break-all">{previewData.fileUrl}</code>
+                <div className="font-medium mb-1">Access Your File:</div>
+                <div className="flex items-center">
+                  <Link className="h-4 w-4 mr-2 text-blue-500" />
+                  <a 
+                    href={previewData.fileUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-500 hover:underline break-all"
+                  >
+                    {previewData.fileUrl}
+                  </a>
+                </div>
               </div>
               
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="w-fit"
-                onClick={() => handleOpenUrl(previewData.fileUrl)}
-              >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Open File URL
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handleOpenUrl(previewData.fileUrl)}
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open File URL
+                </Button>
+              </div>
             </div>
           )}
         </div>
