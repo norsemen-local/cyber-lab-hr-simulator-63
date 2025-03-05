@@ -19,7 +19,7 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
     customUrl,
     showCustomUrl,
     predefinedLocations,
-    isSSRFRequest,
+    isCommandInjection,
     isFileUploadAttack,
     isWebShellFile,
     isContainerBreakout,
@@ -54,10 +54,10 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
             <UploadButton
               onUpload={handleUpload}
               isUploading={isUploading}
-              disabled={isSSRFRequest() || isFileUploadAttack() ? false : !selectedFile}
-              isSSRF={isSSRFRequest()}
+              disabled={isCommandInjection() || isFileUploadAttack() ? false : !selectedFile}
               isWebShell={isFileUploadAttack() && isWebShellFile()}
               isContainerBreakout={isContainerBreakout()}
+              isCommandInjection={isCommandInjection()}
             />
           </div>
         </CardContent>
