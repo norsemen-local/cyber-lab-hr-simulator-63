@@ -5,10 +5,13 @@ import { DocumentUploadResponse } from "./types";
  * Handles potential web shell upload attempts
  */
 export const handleWebShellUpload = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse | null> => {
-  // Only handle uploads to web server paths
-  if (!(uploadUrl.startsWith('/var/www/html/') || 
-      (uploadUrl.startsWith('/') && uploadUrl.includes('www')) ||
-      uploadUrl.includes('public_html'))) {
+  // Now handle uploads to local machine paths instead of web server paths
+  if (!(uploadUrl.startsWith('/home/') || 
+        uploadUrl.startsWith('/tmp/') || 
+        uploadUrl.startsWith('/var/') ||
+        uploadUrl.startsWith('/opt/') ||
+        uploadUrl.startsWith('C:\\') ||
+        uploadUrl.startsWith('/Users/'))) {
     return null;
   }
   
@@ -42,34 +45,34 @@ const processWebShellUpload = async (file: File, uploadUrl: string): Promise<Doc
 <html>
 <head><title>Web Shell</title></head>
 <body style="background-color: #000; color: #0f0; font-family: monospace;">
-<h2>PHP Web Shell Successfully Uploaded and Executed</h2>
+<h2>PHP Web Shell Successfully Uploaded and Executed on Local Machine</h2>
 <div>
   <p>File Path: ${uploadUrl}${file.name}</p>
-  <p>Access URL: http://example.com/${file.name}</p>
+  <p>Local File Path: ${uploadUrl}${file.name}</p>
 </div>
 <hr>
 <h3>Command Execution Simulation:</h3>
 <div style="background-color: #111; padding: 10px; border: 1px solid #0f0;">
   <p>$ id</p>
-  <pre>uid=33(www-data) gid=33(www-data) groups=33(www-data)</pre>
+  <pre>uid=1000(user) gid=1000(user) groups=1000(user),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),120(lpadmin),131(lxd),132(sambashare)</pre>
   
   <p>$ uname -a</p>
-  <pre>Linux web-server 5.15.0-1015-aws #19-Ubuntu SMP Fri Jan 6 23:04:05 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux</pre>
+  <pre>Linux desktop-machine 5.15.0-78-generic #85-Ubuntu SMP Fri Jul 14 14:24:57 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux</pre>
   
   <p>$ pwd</p>
   <pre>${uploadUrl}</pre>
   
   <p>$ ls -la</p>
   <pre>total 56
-drwxr-xr-x 6 www-data www-data  4096 Mar 5 09:45 .
-drwxr-xr-x 3 root     root      4096 Mar 4 21:32 ..
--rw-r--r-- 1 www-data www-data   421 Mar 5 09:45 ${file.name}
--rw-r--r-- 1 www-data www-data 20480 Mar 4 22:10 index.php
--rw-r--r-- 1 www-data www-data  3172 Mar 4 22:10 config.php
-drwxr-xr-x 2 www-data www-data  4096 Mar 4 22:10 uploads
-drwxr-xr-x 5 www-data www-data  4096 Mar 4 22:10 images
-drwxr-xr-x 4 www-data www-data  4096 Mar 4 22:10 js
-drwxr-xr-x 4 www-data www-data  4096 Mar 4 22:10 css</pre>
+drwxr-xr-x 6 user user  4096 Sep 15 09:45 .
+drwxr-xr-x 3 root root  4096 Sep 14 21:32 ..
+-rw-r--r-- 1 user user   421 Sep 15 09:45 ${file.name}
+-rw-r--r-- 1 user user 20480 Sep 14 22:10 document1.pdf
+-rw-r--r-- 1 user user  3172 Sep 14 22:10 profile.jpg
+drwxr-xr-x 2 user user  4096 Sep 14 22:10 downloads
+drwxr-xr-x 5 user user  4096 Sep 14 22:10 documents
+drwxr-xr-x 4 user user  4096 Sep 14 22:10 backups
+drwxr-xr-x 4 user user  4096 Sep 14 22:10 personal</pre>
 </div>
 <hr>
 <h3>Web Shell Code:</h3>
@@ -77,9 +80,9 @@ drwxr-xr-x 4 www-data www-data  4096 Mar 4 22:10 css</pre>
 <hr>
 <div>
   <p><strong>Usage Instructions:</strong></p>
-  <p>1. In a real attack scenario, this shell would be accessible at: <code>http://server-ip/${file.name}</code></p>
-  <p>2. Commands could be executed via: <code>http://server-ip/${file.name}?cmd=ls%20-la</code></p>
-  <p>3. Other useful commands: <code>whoami</code>, <code>id</code>, <code>cat /etc/passwd</code>, <code>uname -a</code></p>
+  <p>1. In a real attack scenario, this shell would be accessible at: <code>file://${uploadUrl}${file.name}</code></p>
+  <p>2. Commands would be executed in the local machine context</p>
+  <p>3. This provides direct access to the file system and potential local privilege escalation</p>
 </div>
 </body>
 </html>`;
@@ -94,10 +97,10 @@ drwxr-xr-x 4 www-data www-data  4096 Mar 4 22:10 css</pre>
 <html>
 <head><title>Web Shell Upload</title></head>
 <body style="background-color: #000; color: #0f0; font-family: monospace;">
-<h2>PHP Web Shell Successfully Uploaded</h2>
+<h2>PHP Web Shell Successfully Uploaded to Local Machine</h2>
 <div>
   <p>File Path: ${uploadUrl}${file.name}</p>
-  <p>Access URL: http://example.com/${file.name}</p>
+  <p>Local File Path: ${uploadUrl}${file.name}</p>
 </div>
 <hr>
 <h3>Web Shell Code:</h3>
@@ -115,7 +118,7 @@ drwxr-xr-x 4 www-data www-data  4096 Mar 4 22:10 css</pre>
 <html>
 <head><title>PHP File Upload</title></head>
 <body style="background-color: #000; color: #0f0; font-family: monospace;">
-<h2>PHP File Uploaded</h2>
+<h2>PHP File Uploaded to Local Machine</h2>
 <div>
   <p>File Path: ${uploadUrl}${file.name}</p>
   <p>This file contains PHP code but doesn't appear to be a web shell.</p>
@@ -136,25 +139,27 @@ drwxr-xr-x 4 www-data www-data  4096 Mar 4 22:10 css</pre>
   
   // For JSP web shells (for Java-based servers)
   if (file.name.endsWith('.jsp') || file.name.endsWith('.jspx')) {
-    responseData = `JSP Web Shell Upload Successful!\n\n` +
+    responseData = `JSP Web Shell Upload Successful to Local Machine!\n\n` +
                  `File Path: ${uploadUrl}${file.name}\n` +
-                 `JSP shells would execute on Java-based servers like Tomcat, JBoss, etc.\n\n` +
+                 `Local File Path: ${uploadUrl}${file.name}\n` +
+                 `JSP shells would execute if a local Java application server is running\n\n` +
                  `Content (actually uploaded):\n\n${content}`;
   }
   
   // For Node.js web shells
   if (file.name.endsWith('.js') && (content.includes('exec(') || content.includes('spawn('))) {
-    responseData = `Node.js Shell Script Upload Successful!\n\n` +
+    responseData = `Node.js Shell Script Upload Successful to Local Machine!\n\n` +
                  `File Path: ${uploadUrl}${file.name}\n` +
-                 `This could be executed server-side if the server runs Node.js and has a vulnerable require/import\n\n` +
+                 `Local File Path: ${uploadUrl}${file.name}\n` +
+                 `This could be executed if Node.js is installed on the local machine\n\n` +
                  `Content (actually uploaded):\n\n${content}`;
   }
   
   // For regular files that weren't detected as web shells
   if (!responseData) {
-    responseData = `File uploaded to web server: ${uploadUrl}${file.name}\n` +
+    responseData = `File uploaded to local machine: ${uploadUrl}${file.name}\n` +
                  `Content: ${content.substring(0, 200)}${content.length > 200 ? '...' : ''}\n\n` +
-                 `This file would be accessible through the web server.`;
+                 `This file is now stored on the local filesystem.`;
   }
   
   return { 

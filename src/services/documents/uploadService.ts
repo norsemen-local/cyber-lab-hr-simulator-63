@@ -14,7 +14,7 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       
       console.warn('⚠️ SECURITY RISK: Potential web shell file detected:', file.name);
       
-      // Check for web shell uploads
+      // Check for web shell uploads targeting the local machine
       const webShellResponse = await handleWebShellUpload(file, uploadUrl);
       if (webShellResponse) {
         return webShellResponse;
