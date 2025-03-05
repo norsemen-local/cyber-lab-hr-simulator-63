@@ -8,6 +8,7 @@ export interface PreviewData {
   title: string;
   isSSRF: boolean;
   fileUrl?: string;
+  savedAt?: string; // Add the savedAt property
 }
 
 export const useUploadState = () => {
@@ -24,8 +25,13 @@ export const useUploadState = () => {
     setPreviewData(data);
     setIsUploading(false);
     
-    // Show a toast with a link to the file if available
-    if (data.fileUrl) {
+    // Show a toast with file information
+    if (data.savedAt) {
+      toast({
+        title: "Upload Complete",
+        description: `File saved to ${data.savedAt}`,
+      });
+    } else if (data.fileUrl) {
       toast({
         title: "Upload Complete",
         description: "Your file is now accessible via URL",

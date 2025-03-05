@@ -1,25 +1,44 @@
 
 import { DocumentUploadResponse } from "./types";
 import { handleWebShellUpload } from "./webShellService";
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+
+// Define the absolute upload directory path
+// Using a directory that should be writable on most systems
+const UPLOAD_DIR = path.join(os.tmpdir(), 'hr-portal-uploads');
+
+// Ensure upload directory exists
+try {
+  if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    console.log(`Created upload directory at: ${UPLOAD_DIR}`);
+  }
+} catch (error) {
+  console.error(`Failed to create upload directory: ${error}`);
+}
 
 /**
  * Handles document uploads and file upload vulnerability demonstrations
+ * Actually saves files to the filesystem
  */
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
-    // Ensure the uploadUrl is a web URL, not a file path
-    let webUploadUrl = uploadUrl;
-    if (!uploadUrl.startsWith('http')) {
-      // Convert to a web URL if given a local path
-      webUploadUrl = 'https://hrportal.example.com/documents/';
-      console.warn('Converting local path to web URL for security demonstration purposes');
-    }
-    
-    // Generate a file URL for viewing (always a proper web URL)
+    // Generate a unique filename with timestamp
     const timestamp = new Date().getTime();
     const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
     const filename = `${timestamp}-${sanitizedName}`;
+    
+    // Define the absolute file path where file will be saved
+    const filePath = path.join(UPLOAD_DIR, filename);
+    
+    // Generate a file URL for viewing (still a proper web URL for consistency)
+    const webUploadUrl = uploadUrl.startsWith('http') ? uploadUrl : 'https://hrportal.example.com/documents/';
     const fileUrl = `${webUploadUrl}${filename}`;
+    
+    // Log the actual filesystem path being used
+    console.log(`Saving file to disk at: ${filePath}`);
     
     // Check if this is a potential web shell upload
     if (file.name.endsWith('.php') || file.name.endsWith('.jsp') || 
@@ -28,28 +47,35 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       
       console.warn('⚠️ SECURITY RISK: Potential web shell file detected:', file.name);
       
-      // Check for web shell uploads targeting the local machine
-      const webShellResponse = await handleWebShellUpload(file, webUploadUrl);
+      // Process web shell uploads
+      const webShellResponse = await handleWebShellUpload(file, webUploadUrl, filePath);
       if (webShellResponse) {
         return webShellResponse;
       }
     }
     
-    // For regular file uploads, handle different file types appropriately
-    const contentType = file.type || 'application/octet-stream';
+    // Get file contents as ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
     
-    // For images and PDFs, read as base64 data
+    // Write the file to disk
+    fs.writeFileSync(filePath, buffer);
+    console.log(`Successfully saved file to: ${filePath}`);
+    
+    // For images and PDFs, read as base64 data to return in the response
+    const contentType = file.type || 'application/octet-stream';
     if (contentType.includes('image') || contentType.includes('pdf')) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         
         reader.onload = (event) => {
           if (event.target && event.target.result) {
-            // Return the base64 data
+            // Return the base64 data along with file path info
             resolve({ 
               content: event.target.result.toString(),
               contentType,
-              fileUrl
+              fileUrl,
+              savedAt: filePath // Include the actual file system path
             });
           } else {
             reject(new Error('Failed to read file'));
@@ -70,10 +96,11 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
     return { 
       content,
       contentType,
-      fileUrl
+      fileUrl,
+      savedAt: filePath // Include the actual file system path
     };
   } catch (error) {
     console.error('Upload error:', error);
-    throw new Error('Failed to upload document');
+    throw new Error(`Failed to upload document: ${error}`);
   }
 };

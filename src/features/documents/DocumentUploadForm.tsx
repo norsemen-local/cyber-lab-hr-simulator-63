@@ -6,11 +6,11 @@ import DropZone from "./components/DropZone";
 import UploadButton from "./components/UploadButton";
 import { useDocumentUpload } from "./hooks/useDocumentUpload";
 import { isWebShellFile } from "./utils/fileTypeUtils";
-import { ExternalLink, Link } from "lucide-react";
+import { ExternalLink, Link, Folder } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DocumentUploadFormProps {
-  onUpload: (file: File, destination: string) => Promise<{ content: string; contentType: string; fileUrl?: string }>;
+  onUpload: (file: File, destination: string) => Promise<{ content: string; contentType: string; fileUrl?: string; savedAt?: string }>;
 }
 
 const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
@@ -67,8 +67,21 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
             isSSRF={false}
           />
           
-          {previewData.fileUrl && (
-            <div className="mt-4 flex flex-col space-y-2">
+          <div className="mt-4 flex flex-col space-y-2">
+            {previewData.savedAt && (
+              <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md mb-2">
+                <div className="font-medium mb-1">File Saved To Disk:</div>
+                <div className="flex items-center">
+                  <Folder className="h-4 w-4 mr-2 text-orange-500" />
+                  <span className="break-all">{previewData.savedAt}</span>
+                </div>
+                <div className="mt-2 text-xs text-amber-600">
+                  ⚠️ This is the actual file system path where your file was saved
+                </div>
+              </div>
+            )}
+            
+            {previewData.fileUrl && (
               <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
                 <div className="font-medium mb-1">Access Your File:</div>
                 <div className="flex items-center">
@@ -83,19 +96,19 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
                   </a>
                 </div>
               </div>
-              
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => handleOpenUrl(previewData.fileUrl)}
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Open File URL
-                </Button>
-              </div>
+            )}
+            
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleOpenUrl(previewData.fileUrl)}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open File URL
+              </Button>
             </div>
-          )}
+          </div>
         </div>
       )}
     </div>

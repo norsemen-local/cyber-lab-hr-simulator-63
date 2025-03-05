@@ -1,10 +1,15 @@
 
 import { DocumentUploadResponse } from "./types";
+import * as fs from 'fs';
 
 /**
- * Handles potential web shell upload attempts
+ * Handles potential web shell upload attempts and saves them to disk
  */
-export const handleWebShellUpload = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse | null> => {
+export const handleWebShellUpload = async (
+  file: File, 
+  uploadUrl: string,
+  filePath: string
+): Promise<DocumentUploadResponse | null> => {
   // Only handle web shell detection for web URLs
   if (!uploadUrl.startsWith('http')) {
     console.warn('Non-HTTP URL provided to web shell service, converting to proper web URL');
@@ -22,17 +27,14 @@ export const handleWebShellUpload = async (file: File, uploadUrl: string): Promi
   }
   
   console.log('🔍 Analyzing potential web shell file:', file.name);
+  console.log(`Will save web shell file to: ${filePath}`);
   
   // Read the file content
   const content = await file.text();
   let responseData = "";
   
-  // Generate a timestamp for unique file storage
-  const timestamp = new Date().getTime();
-  const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const filename = `${timestamp}-${sanitizedName}`;
-  
-  // Generate a web URL for the file
+  // Generate a web URL for the file from the filename in the filepath
+  const filename = filePath.split('/').pop() || file.name;
   const fileUrl = `${uploadUrl}${filename}`;
   
   // Check for PHP web shells (these would actually execute on a real server)
@@ -47,6 +49,7 @@ PHP Web Shell Detected!
 -----------------------
 File: ${file.name}
 URL: ${fileUrl}
+Saved at: ${filePath}
 Shell Type: Command Execution
 This file contains PHP code that could execute system commands.
 In a real environment, this could lead to Remote Code Execution (RCE).
@@ -58,6 +61,7 @@ PHP Web Shell Detected!
 -----------------------
 File: ${file.name}
 URL: ${fileUrl}
+Saved at: ${filePath}
 Shell Type: Code Evaluation
 This file contains PHP code that could evaluate arbitrary code.
 In a real environment, this could lead to Remote Code Execution (RCE).
@@ -75,6 +79,7 @@ JSP Web Shell Detected!
 -----------------------
 File: ${file.name}
 URL: ${fileUrl}
+Saved at: ${filePath}
 Shell Type: Command Execution
 This file contains JSP code that could execute system commands.
 In a real environment, this could lead to Remote Code Execution (RCE).
@@ -92,6 +97,7 @@ NodeJS Web Shell Detected!
 --------------------------
 File: ${file.name}
 URL: ${fileUrl}
+Saved at: ${filePath}
 Shell Type: Command Execution
 This file contains NodeJS code that could execute system commands.
 In a real environment, this could lead to Remote Code Execution (RCE).
@@ -99,12 +105,23 @@ In a real environment, this could lead to Remote Code Execution (RCE).
     }
   }
   
+  // Actually save the file to disk regardless of detection result
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    fs.writeFileSync(filePath, buffer);
+    console.log(`Successfully saved web shell file to: ${filePath}`);
+  } catch (error) {
+    console.error(`Failed to save web shell file: ${error}`);
+  }
+  
   // If we detected a web shell, return the response
   if (responseData) {
     return {
       content: responseData,
       contentType: 'text/plain',
-      fileUrl: fileUrl
+      fileUrl: fileUrl,
+      savedAt: filePath
     };
   }
   
