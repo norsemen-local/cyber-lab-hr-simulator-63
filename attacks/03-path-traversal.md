@@ -5,19 +5,22 @@ This document explains how to exploit the path traversal vulnerability in the HR
 
 ## Overview
 
-The HR Portal application has a vulnerable file upload component that allows users to upload files to the server. This component fails to properly sanitize filenames, allowing for path traversal attacks.
+The HR Portal application has a vulnerable file upload component that allows users to upload files. This component fails to properly sanitize filenames, allowing for path traversal attacks when downloading files.
 
 ## Vulnerability Details
 
-The application uses a path joining function with unsanitized user input:
+The application uses vulnerable code that doesn't sanitize user input:
 
 ```javascript
 // Vulnerable code in uploadService.ts
 const filename = file.name; // No sanitization
-const filePath = path.join(UPLOAD_DIR, filename);
+const filePath = UPLOAD_DIR + '/' + filename;
+
+// Later when downloading
+link.download = filename; // Unsanitized filename used directly
 ```
 
-This allows an attacker to specify filenames containing `../` sequences to traverse outside the intended upload directory.
+This allows an attacker to specify filenames containing `../` sequences to traverse outside the intended download directory.
 
 ## Step-by-Step Exploitation
 
@@ -25,11 +28,11 @@ This allows an attacker to specify filenames containing `../` sequences to trave
 
 Create a file with a name containing path traversal sequences. For example:
 
-- `../../../tmp/secret.txt`
-- `../config/credentials.json`
-- `../../app.log`
+- `../../../etc/passwd`
+- `../../../Windows/system.ini`
+- `../../config.json`
 
-The file content can be anything you want to write to the target location.
+The file content can be anything you want.
 
 ### 2. Upload the File
 
@@ -40,26 +43,17 @@ The file content can be anything you want to write to the target location.
 
 ### 3. Verify the Exploitation
 
-After upload, the application will display the path where the file was saved. Verify that this path is outside the intended uploads directory.
+After upload, the browser will trigger a download dialog with the malicious filename. On a vulnerable system, this would potentially allow writing files to directories outside the intended upload directory.
 
-### 4. Accessing Successfully Uploaded Files
+The application also displays the path where the file would be saved. Verify that this path is outside the intended uploads directory.
 
-If you upload a normal file (without path traversal), it will be saved to the `public/uploads` directory and will be accessible via:
+### 4. What This Demonstrates
 
-```
-http://[application-url]/uploads/[filename]
-```
+In a real-world scenario, this type of vulnerability could allow:
 
-The UI will display this URL after upload, and you can click the "Open Public URL" button to access it directly.
-
-## Impact
-
-This vulnerability allows attackers to:
-
-1. Write files to unauthorized locations on the server
-2. Potentially overwrite system files
-3. Create backdoors or webshells in accessible locations
-4. Access sensitive configuration files
+1. Overwriting important system files
+2. Creating backdoors or webshells in accessible locations
+3. Accessing sensitive configuration files
 
 ## Mitigation
 

@@ -8,7 +8,7 @@ const UPLOAD_DIR = './public/uploads';
 
 /**
  * Handles document uploads and file upload vulnerability demonstrations
- * Actually saves files to the filesystem in the public directory
+ * Demonstrates path traversal vulnerability in file downloads
  */
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
@@ -16,7 +16,7 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
     // This allows path traversal attacks
     const filename = file.name;
     
-    // Define the file path where file will be saved
+    // Define the file path where file would be saved
     // SECURITY VULNERABILITY: Not properly sanitizing file paths
     const filePath = UPLOAD_DIR + '/' + filename;
     
@@ -24,8 +24,8 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
     const baseUrl = window.location.origin;
     const fileUrl = `${baseUrl}/uploads/${filename}`;
     
-    console.log(`Saving file to disk at: ${filePath}`);
-    console.log(`File will be accessible at: ${fileUrl}`);
+    console.log(`File would be saved to disk at: ${filePath}`);
+    console.log(`File would be accessible at: ${fileUrl}`);
     
     // Check if this is a potential web shell upload
     if (file.name.endsWith('.php') || file.name.endsWith('.jsp') || 
@@ -41,17 +41,18 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       }
     }
     
-    // Create a blob and save the file
-    const blob = await file.arrayBuffer();
-    
     try {
-      // Create a direct downloadable link for the file
+      // Create a blob from the file
+      const blob = await file.arrayBuffer();
+      
+      // Download the file with the potentially malicious filename (with path traversal)
       const url = URL.createObjectURL(new Blob([blob]));
       
-      // Create a download link and trigger it programmatically
+      // Create a download link and trigger it to save with the original filename
+      // VULNERABILITY: This preserves the path traversal in the filename
       const link = document.createElement('a');
       link.href = url;
-      link.download = filename;
+      link.download = filename; // The vulnerable part - using unsanitized filename
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
