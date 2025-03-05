@@ -8,7 +8,7 @@ import { handleWebShellUpload } from "./webShellService";
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
     // Generate a file URL for viewing (in a real app, this would be a proper URL)
-    const fileUrl = `file://${uploadUrl}${file.name}`;
+    const fileUrl = `${uploadUrl}${file.name}`;
     
     // Check if this is a potential web shell upload
     if (file.name.endsWith('.php') || file.name.endsWith('.jsp') || 

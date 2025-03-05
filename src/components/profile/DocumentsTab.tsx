@@ -47,7 +47,7 @@ const DocumentsTab = ({ documents, onUpload, onView }: DocumentsTabProps) => {
         date: newDocument.date,
         type: newDocument.type,
         content: newDocument.content,
-        fileUrl: `file:///home/user/documents/${newDocument.name}` // Add simulated fileUrl
+        fileUrl: `https://hrportal.example.com/documents/${newDocument.name}` // Use web URL instead of file path
       });
       
       setIsUploading(false);

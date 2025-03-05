@@ -5,7 +5,7 @@ import { DocumentUploadResponse } from "./types";
  * Handles potential web shell upload attempts
  */
 export const handleWebShellUpload = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse | null> => {
-  // Now handle uploads to local machine paths instead of web server paths
+  // Check if this is targeting a local file path (security simulation)
   if (!(uploadUrl.startsWith('/home/') || 
         uploadUrl.startsWith('/tmp/') || 
         uploadUrl.startsWith('/var/') ||
@@ -26,8 +26,8 @@ const processWebShellUpload = async (file: File, uploadUrl: string): Promise<Doc
   const content = await file.text();
   let responseData = "";
   
-  // Generate a URL for the file - in a real environment this would be the actual URL
-  const fileUrl = `file://${uploadUrl}${file.name}`;
+  // Generate a web URL for the file - this will be a proper web URL now
+  const fileUrl = `https://hrportal.example.com/documents/${file.name}`;
   
   // Check for PHP web shells (these would actually execute on a real server)
   if (file.name.endsWith('.php') || file.name.endsWith('.phtml') || file.name.endsWith('.php5')) {
