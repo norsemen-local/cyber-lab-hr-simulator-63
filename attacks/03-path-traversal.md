@@ -9,7 +9,7 @@ The HR Portal application has a vulnerable file upload component that allows use
 
 ## Vulnerability Details
 
-The application uses Node.js's `path.join()` function with unsanitized user input:
+The application uses a path joining function with unsanitized user input:
 
 ```javascript
 // Vulnerable code in uploadService.ts

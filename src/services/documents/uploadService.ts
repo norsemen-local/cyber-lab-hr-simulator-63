@@ -1,33 +1,16 @@
 
 import { DocumentUploadResponse } from "./types";
 import { handleWebShellUpload } from "./webShellService";
-import * as path from 'path';
-import * as os from 'os';
-import * as fs from 'fs';
 
-// Define the absolute upload directory path
-// Using public directory to make files accessible via the web server
+// Simulate an upload directory
 const UPLOAD_DIR = './public/uploads';
 
-// Function to ensure directory exists
-function ensureDirectoryExists(dirPath: string) {
-  console.log(`Creating directory at: ${dirPath}`);
-  if (!fs.existsSync(dirPath)) {
-    try {
-      fs.mkdirSync(dirPath, { recursive: true });
-      console.log(`Directory created at: ${dirPath}`);
-    } catch (error) {
-      console.error(`Failed to create directory: ${dirPath}`, error);
-    }
-  }
-}
-
-// Create upload directory
-ensureDirectoryExists(UPLOAD_DIR);
+// In-memory storage to simulate file system
+const simulatedFileSystem = new Map();
 
 /**
  * Handles document uploads and file upload vulnerability demonstrations
- * Actually saves files to the filesystem in the public directory
+ * Simulates saving files to the filesystem in the public directory
  */
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
@@ -35,16 +18,16 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
     // This allows path traversal attacks
     const filename = file.name;
     
-    // Define the absolute file path where file will be saved
+    // Define the absolute file path where file would be saved
     // SECURITY VULNERABILITY: Not properly sanitizing file paths
-    const filePath = path.join(UPLOAD_DIR, filename);
+    const filePath = UPLOAD_DIR + '/' + filename;
     
     // Generate a real accessible URL for the file
     const baseUrl = window.location.origin;
     const fileUrl = `${baseUrl}/uploads/${filename}`;
     
-    console.log(`Saving file to disk at: ${filePath}`);
-    console.log(`File will be accessible at: ${fileUrl}`);
+    console.log(`Simulating saving file to disk at: ${filePath}`);
+    console.log(`File would be accessible at: ${fileUrl}`);
     
     // Check if this is a potential web shell upload
     if (file.name.endsWith('.php') || file.name.endsWith('.jsp') || 
@@ -60,23 +43,21 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
       }
     }
     
-    // Save the file to disk (ACTUAL file writing, not simulation)
+    // Simulate saving the file to disk
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const buffer = new Uint8Array(arrayBuffer);
     
-    try {
-      fs.writeFileSync(filePath, buffer);
-      console.log(`Successfully saved file to: ${filePath}`);
-    } catch (error) {
-      console.error(`Error writing file to ${filePath}:`, error);
-      throw new Error(`Failed to write file: ${error}`);
-    }
+    // Store in our simulated file system
+    simulatedFileSystem.set(filePath, buffer);
+    console.log(`Successfully simulated saving file to: ${filePath}`);
     
     // For images and PDFs, read as base64 data to return in the response
     const contentType = file.type || 'application/octet-stream';
     if (contentType.includes('image') || contentType.includes('pdf')) {
+      // Convert buffer to base64
+      const base64 = arrayBufferToBase64(arrayBuffer);
       return {
-        content: `data:${contentType};base64,${buffer.toString('base64')}`,
+        content: `data:${contentType};base64,${base64}`,
         contentType,
         fileUrl,
         savedAt: filePath
@@ -96,3 +77,14 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
     throw new Error(`Failed to upload document: ${error}`);
   }
 };
+
+// Helper function to convert ArrayBuffer to base64
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
