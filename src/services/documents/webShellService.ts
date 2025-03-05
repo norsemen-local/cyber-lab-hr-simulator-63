@@ -26,6 +26,9 @@ const processWebShellUpload = async (file: File, uploadUrl: string): Promise<Doc
   const content = await file.text();
   let responseData = "";
   
+  // Generate a URL for the file - in a real environment this would be the actual URL
+  const fileUrl = `file://${uploadUrl}${file.name}`;
+  
   // Check for PHP web shells (these would actually execute on a real server)
   if (file.name.endsWith('.php') || file.name.endsWith('.phtml') || file.name.endsWith('.php5')) {
     // Check if it contains potentially dangerous PHP code
@@ -48,6 +51,7 @@ const processWebShellUpload = async (file: File, uploadUrl: string): Promise<Doc
 <h2>PHP Web Shell Successfully Uploaded and Executed on Local Machine</h2>
 <div>
   <p>File Path: ${uploadUrl}${file.name}</p>
+  <p>File URL: <a href="${fileUrl}" style="color: #0f0;">${fileUrl}</a></p>
   <p>Local File Path: ${uploadUrl}${file.name}</p>
 </div>
 <hr>
@@ -80,7 +84,7 @@ drwxr-xr-x 4 user user  4096 Sep 14 22:10 personal</pre>
 <hr>
 <div>
   <p><strong>Usage Instructions:</strong></p>
-  <p>1. In a real attack scenario, this shell would be accessible at: <code>file://${uploadUrl}${file.name}</code></p>
+  <p>1. In a real attack scenario, this shell would be accessible at: <code>${fileUrl}</code></p>
   <p>2. Commands would be executed in the local machine context</p>
   <p>3. This provides direct access to the file system and potential local privilege escalation</p>
 </div>
@@ -89,7 +93,8 @@ drwxr-xr-x 4 user user  4096 Sep 14 22:10 personal</pre>
           
           return { 
             content: responseData,
-            contentType: "text/html"
+            contentType: "text/html",
+            fileUrl: fileUrl
           };
         } else {
           // Generic PHP shell without command parameter
@@ -100,6 +105,7 @@ drwxr-xr-x 4 user user  4096 Sep 14 22:10 personal</pre>
 <h2>PHP Web Shell Successfully Uploaded to Local Machine</h2>
 <div>
   <p>File Path: ${uploadUrl}${file.name}</p>
+  <p>File URL: <a href="${fileUrl}" style="color: #0f0;">${fileUrl}</a></p>
   <p>Local File Path: ${uploadUrl}${file.name}</p>
 </div>
 <hr>
@@ -121,6 +127,7 @@ drwxr-xr-x 4 user user  4096 Sep 14 22:10 personal</pre>
 <h2>PHP File Uploaded to Local Machine</h2>
 <div>
   <p>File Path: ${uploadUrl}${file.name}</p>
+  <p>File URL: <a href="${fileUrl}" style="color: #0f0;">${fileUrl}</a></p>
   <p>This file contains PHP code but doesn't appear to be a web shell.</p>
 </div>
 <hr>
@@ -132,7 +139,8 @@ drwxr-xr-x 4 user user  4096 Sep 14 22:10 personal</pre>
       
       return { 
         content: responseData,
-        contentType: "text/html"
+        contentType: "text/html",
+        fileUrl: fileUrl
       };
     }
   }
@@ -141,29 +149,45 @@ drwxr-xr-x 4 user user  4096 Sep 14 22:10 personal</pre>
   if (file.name.endsWith('.jsp') || file.name.endsWith('.jspx')) {
     responseData = `JSP Web Shell Upload Successful to Local Machine!\n\n` +
                  `File Path: ${uploadUrl}${file.name}\n` +
+                 `File URL: ${fileUrl}\n` +
                  `Local File Path: ${uploadUrl}${file.name}\n` +
                  `JSP shells would execute if a local Java application server is running\n\n` +
                  `Content (actually uploaded):\n\n${content}`;
+                 
+    return { 
+      content: responseData,
+      contentType: "text/plain",
+      fileUrl: fileUrl
+    };
   }
   
   // For Node.js web shells
   if (file.name.endsWith('.js') && (content.includes('exec(') || content.includes('spawn('))) {
     responseData = `Node.js Shell Script Upload Successful to Local Machine!\n\n` +
                  `File Path: ${uploadUrl}${file.name}\n` +
+                 `File URL: ${fileUrl}\n` +
                  `Local File Path: ${uploadUrl}${file.name}\n` +
                  `This could be executed if Node.js is installed on the local machine\n\n` +
                  `Content (actually uploaded):\n\n${content}`;
+                 
+    return { 
+      content: responseData,
+      contentType: "text/plain",
+      fileUrl: fileUrl
+    };
   }
   
   // For regular files that weren't detected as web shells
   if (!responseData) {
     responseData = `File uploaded to local machine: ${uploadUrl}${file.name}\n` +
+                 `File URL: ${fileUrl}\n` +
                  `Content: ${content.substring(0, 200)}${content.length > 200 ? '...' : ''}\n\n` +
                  `This file is now stored on the local filesystem.`;
   }
   
   return { 
     content: responseData,
-    contentType: responseData.startsWith('<!DOCTYPE html>') ? "text/html" : "text/plain"
+    contentType: responseData.startsWith('<!DOCTYPE html>') ? "text/html" : "text/plain",
+    fileUrl: fileUrl
   };
 };

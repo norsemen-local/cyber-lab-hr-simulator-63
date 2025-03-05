@@ -3,13 +3,19 @@ import { useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 
 export interface UseDocumentUploadProps {
-  onUpload: (file: File, destination: string) => Promise<{ content: string; contentType: string }>;
+  onUpload: (file: File, destination: string) => Promise<{ content: string; contentType: string; fileUrl?: string }>;
 }
 
 export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [previewData, setPreviewData] = useState<{ content: string; contentType: string; title: string; isSSRF: boolean } | null>(null);
+  const [previewData, setPreviewData] = useState<{ 
+    content: string; 
+    contentType: string; 
+    title: string; 
+    isSSRF: boolean;
+    fileUrl?: string; 
+  } | null>(null);
   const { toast } = useToast();
   const s3Bucket = "s3://employee-bucket/documents/";
 
@@ -67,7 +73,9 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
         });
       }
       
-      const response = await onUpload(selectedFile, s3Bucket);
+      // Set local file path for upload (simulating S3 path)
+      const localFilePath = `/home/user/documents/`;
+      const response = await onUpload(selectedFile, localFilePath);
       
       setPreviewData({
         content: response.content,
@@ -75,7 +83,8 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
         title: isFileUploadAttack() && isWebShellFile() ? 
                `Web Shell Upload (${isPHPFile() ? 'PHP' : isJSPFile() ? 'JSP' : 'Node.js'})` : 
                `Preview: ${selectedFile.name}`,
-        isSSRF: false
+        isSSRF: false,
+        fileUrl: response.fileUrl
       });
 
       if (isFileUploadAttack() && isWebShellFile()) {

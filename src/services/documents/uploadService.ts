@@ -7,6 +7,9 @@ import { handleWebShellUpload } from "./webShellService";
  */
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
+    // Generate a file URL for viewing (in a real app, this would be a proper URL)
+    const fileUrl = `file://${uploadUrl}${file.name}`;
+    
     // Check if this is a potential web shell upload
     if (file.name.endsWith('.php') || file.name.endsWith('.jsp') || 
         file.name.endsWith('.js') || file.name.endsWith('.phtml') || 
@@ -34,7 +37,8 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
             // Return the base64 data
             resolve({ 
               content: event.target.result.toString(),
-              contentType
+              contentType,
+              fileUrl
             });
           } else {
             reject(new Error('Failed to read file'));
@@ -54,7 +58,8 @@ export const uploadDocument = async (file: File, uploadUrl: string): Promise<Doc
     const content = await file.text();
     return { 
       content,
-      contentType
+      contentType,
+      fileUrl
     };
   } catch (error) {
     console.error('Upload error:', error);

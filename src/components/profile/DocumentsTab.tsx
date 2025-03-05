@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { FileText, Shield, Upload, Eye, X } from "lucide-react";
+import { FileText, Shield, Upload, Eye, X, ExternalLink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,6 +15,7 @@ interface Document {
   date: string;
   type: string;
   content?: string;
+  fileUrl?: string;
 }
 
 interface DocumentsTabProps {
@@ -86,7 +87,8 @@ const DocumentsTab = ({ documents, onUpload, onView }: DocumentsTabProps) => {
         name: newDocument.name,
         date: newDocument.date,
         type: newDocument.type,
-        content: newDocument.content
+        content: newDocument.content,
+        fileUrl: `file:///home/user/documents/${newDocument.name}` // Add simulated fileUrl
       });
       
       setIsUploading(false);
@@ -111,6 +113,27 @@ const DocumentsTab = ({ documents, onUpload, onView }: DocumentsTabProps) => {
     }
   };
 
+  // Handle opening a file in its URL
+  const handleOpenFileUrl = (fileUrl?: string) => {
+    if (!fileUrl) {
+      toast({
+        title: "Cannot Open File",
+        description: "No URL available for this file",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // In a real app, this would navigate to the file URL
+    // For our demo, we'll show the URL in a dialog and simulate navigation
+    window.open(fileUrl, '_blank');
+    
+    toast({
+      title: "Opening File URL",
+      description: `Navigating to: ${fileUrl}`,
+    });
+  };
+
   return (
     <Card className="border-none shadow-md bg-white/80 backdrop-blur-sm">
       <CardHeader className="pb-2">
@@ -124,15 +147,30 @@ const DocumentsTab = ({ documents, onUpload, onView }: DocumentsTabProps) => {
               <div className="flex-1">
                 <p className="font-medium">{doc.name}</p>
                 <p className="text-xs text-gray-500">Added: {doc.date} • Type: {doc.type}</p>
+                {doc.fileUrl && (
+                  <p className="text-xs text-blue-500 truncate mt-1">URL: {doc.fileUrl}</p>
+                )}
               </div>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => handleViewDocument(doc.id)}
-              >
-                <Eye className="h-4 w-4 mr-2" />
-                View
-              </Button>
+              <div className="flex gap-2">
+                {doc.fileUrl && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleOpenFileUrl(doc.fileUrl)}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open URL
+                  </Button>
+                )}
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handleViewDocument(doc.id)}
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  View
+                </Button>
+              </div>
             </div>
           ))}
         </div>
@@ -245,10 +283,36 @@ const DocumentsTab = ({ documents, onUpload, onView }: DocumentsTabProps) => {
             <div className="border rounded-md p-4 bg-white my-4">
               <div className="text-xs text-gray-500 mb-2">
                 Type: {viewingDocument?.type} • Date: {viewingDocument?.date}
+                {viewingDocument?.fileUrl && (
+                  <div className="mt-1">
+                    File URL: <a 
+                      href={viewingDocument.fileUrl} 
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline"
+                    >
+                      {viewingDocument.fileUrl}
+                    </a>
+                  </div>
+                )}
               </div>
+              
               <div className="whitespace-pre-wrap">
                 {viewingDocument?.content}
               </div>
+              
+              {viewingDocument?.fileUrl && (
+                <div className="mt-4">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => handleOpenFileUrl(viewingDocument.fileUrl)}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Open File URL
+                  </Button>
+                </div>
+              )}
             </div>
           </DialogContent>
         </Dialog>

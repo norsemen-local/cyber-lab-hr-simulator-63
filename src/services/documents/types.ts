@@ -6,11 +6,13 @@ export interface DocumentMetadata {
   name: string;
   date: string;
   size: string;
+  fileUrl?: string;
 }
 
 export interface DocumentUploadResponse {
   content: string;
   contentType: string;
+  fileUrl?: string;
 }
 
 export interface CommandExecutionResult {

@@ -5,9 +5,11 @@ import PreviewWindow from "@/components/PreviewWindow";
 import DropZone from "./components/DropZone";
 import UploadButton from "./components/UploadButton";
 import { useDocumentUpload } from "./hooks/useDocumentUpload";
+import { ExternalLink } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface DocumentUploadFormProps {
-  onUpload: (file: File, destination: string) => Promise<{ content: string; contentType: string }>;
+  onUpload: (file: File, destination: string) => Promise<{ content: string; contentType: string; fileUrl?: string }>;
 }
 
 const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
@@ -21,6 +23,12 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
     handleFileChange,
     handleUpload,
   } = useDocumentUpload({ onUpload });
+
+  const handleOpenUrl = (url?: string) => {
+    if (url) {
+      window.open(url, '_blank');
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -50,12 +58,33 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
       </Card>
 
       {previewData && (
-        <PreviewWindow
-          content={previewData.content}
-          contentType={previewData.contentType}
-          title={previewData.title}
-          isSSRF={false}
-        />
+        <div>
+          <PreviewWindow
+            content={previewData.content}
+            contentType={previewData.contentType}
+            title={previewData.title}
+            isSSRF={false}
+          />
+          
+          {previewData.fileUrl && (
+            <div className="mt-4 flex flex-col space-y-2">
+              <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
+                <div className="font-medium">File URL:</div>
+                <code className="text-xs break-all">{previewData.fileUrl}</code>
+              </div>
+              
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="w-fit"
+                onClick={() => handleOpenUrl(previewData.fileUrl)}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open File URL
+              </Button>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
