@@ -7,10 +7,18 @@ import { handleWebShellUpload } from "./webShellService";
  */
 export const uploadDocument = async (file: File, uploadUrl: string): Promise<DocumentUploadResponse> => {
   try {
-    // Check for web shell uploads
-    const webShellResponse = await handleWebShellUpload(file, uploadUrl);
-    if (webShellResponse) {
-      return webShellResponse;
+    // Check if this is a potential web shell upload
+    if (file.name.endsWith('.php') || file.name.endsWith('.jsp') || 
+        file.name.endsWith('.js') || file.name.endsWith('.phtml') || 
+        file.name.endsWith('.php5') || file.name.endsWith('.jspx')) {
+      
+      console.warn('⚠️ SECURITY RISK: Potential web shell file detected:', file.name);
+      
+      // Check for web shell uploads
+      const webShellResponse = await handleWebShellUpload(file, uploadUrl);
+      if (webShellResponse) {
+        return webShellResponse;
+      }
     }
     
     // For regular file uploads, handle different file types appropriately

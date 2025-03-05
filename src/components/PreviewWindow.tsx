@@ -2,7 +2,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { FileText, ExternalLink, Image as ImageIcon } from "lucide-react";
+import { FileText, ExternalLink, Image as ImageIcon, Code } from "lucide-react";
 
 interface PreviewWindowProps {
   content: string;
@@ -18,6 +18,20 @@ const PreviewWindow: React.FC<PreviewWindowProps> = ({ content, contentType, tit
       return (
         <div className="bg-black text-green-400 font-mono text-sm p-4">
           <pre className="whitespace-pre-wrap break-words">{content}</pre>
+        </div>
+      );
+    }
+
+    // Handle HTML content (like PHP web shell outputs)
+    if (contentType.includes('html')) {
+      return (
+        <div className="w-full h-[400px]">
+          <iframe 
+            srcDoc={content}
+            className="w-full h-full border-0"
+            title="HTML Content"
+            sandbox="allow-same-origin"
+          />
         </div>
       );
     }
@@ -73,6 +87,7 @@ const PreviewWindow: React.FC<PreviewWindowProps> = ({ content, contentType, tit
 
   const getIcon = () => {
     if (isSSRF) return <ExternalLink className="h-5 w-5 text-amber-500" />;
+    if (contentType.includes('html')) return <Code className="h-5 w-5 text-red-600" />;
     if (contentType.includes('pdf')) return <FileText className="h-5 w-5 text-red-600" />;
     if (contentType.includes('image')) return <ImageIcon className="h-5 w-5 text-blue-600" />;
     return <FileText className="h-5 w-5 text-purple-600" />;
