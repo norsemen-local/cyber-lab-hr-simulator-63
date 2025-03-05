@@ -13,6 +13,7 @@ export interface DocumentUploadResponse {
   content: string;
   contentType: string;
   fileUrl?: string;
+  savedAt?: string;  // Added this property to the interface
 }
 
 export interface CommandExecutionResult {
