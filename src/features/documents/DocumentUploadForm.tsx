@@ -6,7 +6,7 @@ import DropZone from "./components/DropZone";
 import UploadButton from "./components/UploadButton";
 import { useDocumentUpload } from "./hooks/useDocumentUpload";
 import { isWebShellFile } from "./utils/fileTypeUtils";
-import { ExternalLink, Link, Folder } from "lucide-react";
+import { ExternalLink, Link, Folder, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface DocumentUploadFormProps {
@@ -83,7 +83,10 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
             
             {previewData.fileUrl && (
               <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md">
-                <div className="font-medium mb-1">Access Your File:</div>
+                <div className="font-medium mb-1 flex items-center">
+                  <Globe className="h-4 w-4 mr-2 text-green-600" />
+                  Public Access URL:
+                </div>
                 <div className="flex items-center">
                   <Link className="h-4 w-4 mr-2 text-blue-500" />
                   <a 
@@ -95,6 +98,9 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
                     {previewData.fileUrl}
                   </a>
                 </div>
+                <div className="mt-2 text-xs text-green-600">
+                  ✓ This URL is publicly accessible through your AWS Load Balancer
+                </div>
               </div>
             )}
             
@@ -103,9 +109,10 @@ const DocumentUploadForm = ({ onUpload }: DocumentUploadFormProps) => {
                 variant="outline" 
                 size="sm"
                 onClick={() => handleOpenUrl(previewData.fileUrl)}
+                className="bg-blue-50 hover:bg-blue-100 border-blue-200"
               >
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Open File URL
+                Open Public URL
               </Button>
             </div>
           </div>
