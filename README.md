@@ -1,4 +1,3 @@
-
 # HR Cyber Security Lab Simulator
 
 This project is a deliberately vulnerable HR application designed for cybersecurity training and education. It demonstrates common security vulnerabilities found in web applications.
@@ -143,27 +142,46 @@ This attack works because the EC2 instance has been granted IAM permissions to c
 
 ---
 
-### 3. Insecure File Upload
+### 3. Insecure File Upload & Path Traversal
 
-The application allows unrestricted file uploads:
+The application allows unrestricted file uploads and is vulnerable to path traversal attacks:
 
 ```javascript
-// No validation on file uploads
-const handleFileUpload = (e) => {
-  const file = e.target.files[0];
-  if (file) {
-    // No validation for file type, size, or content
-    console.log(`Uploading file: ${file.name} without any validation`);
-  }
-};
+// Vulnerable file upload code (no sanitization)
+const filename = file.name; // No sanitization
+const filePath = path.join(UPLOAD_DIR, filename);
 ```
 
-**Exploitation Examples:**
-- Upload malicious PHP files that could be executed by the server
-- Upload extremely large files to cause denial of service
-- Upload files with embedded malicious scripts
+#### Exploitation Step-by-Step:
 
----
+1. Navigate to the Document Upload page (`/documents`)
+2. Prepare a file with a malicious name containing path traversal sequences, such as:
+   - `../../../etc/passwd` (to read system files on Linux)
+   - `..\..\Windows\System32\drivers\etc\hosts` (on Windows)
+   - `../config/database.yml` (to access application config files)
+
+3. Upload the file using the upload form
+4. The application will save the file to the path you specified rather than in the uploads directory
+5. Access the uploaded file using the provided URL in the interface
+
+**What happens:**
+- The application fails to sanitize the filename and uses it directly in a path.join() operation
+- This allows an attacker to traverse outside the intended upload directory
+- Files can be written to any location the application has access to
+- The attacker gains the ability to overwrite or create files anywhere the server process has permission
+
+#### Accessing Uploaded Files:
+
+All successfully uploaded files are saved to the `public/uploads` directory and are accessible via:
+- The direct URL shown in the UI after upload
+- Direct browser access at `http://[your-application-url]/uploads/[filename]`
+
+For exploiting the path traversal vulnerability:
+1. Upload a file with a name like `../../../tmp/malicious.txt`
+2. The file will be saved outside the intended directory
+3. You can verify the file location using the path shown in the "File Saved To Disk" section
+
+**Mitigation (for learning):** Validate and sanitize filenames, use secure file naming schemes (like UUIDs), and restrict the upload directory with proper permissions.
 
 ### 4. Sensitive Data Exposure
 
