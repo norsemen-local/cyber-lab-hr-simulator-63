@@ -41,11 +41,11 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
         showSecurityWarning(`Uploading ${fileType} files creates a web shell vulnerability!`);
       }
       
-      // Set local file path for upload (simulating S3 path)
-      const localFilePath = `/home/user/documents/`;
-      const response = await onUpload(selectedFile, localFilePath);
+      // Set web URL path for upload (simulating S3 or web server path)
+      const webBasePath = `https://hrportal.example.com/documents/`;
+      const response = await onUpload(selectedFile, webBasePath);
       
-      // Create preview data with file URL
+      // Create preview data with web URL
       const newPreviewData: PreviewData = {
         content: response.content,
         contentType: response.contentType,
@@ -53,7 +53,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
               `Web Shell Upload (${getFileTypeLabel(selectedFile)})` : 
               `Preview: ${selectedFile.name}`,
         isSSRF: false,
-        fileUrl: response.fileUrl || `file://${localFilePath}${selectedFile.name}` // Ensure we always have a fileUrl
+        fileUrl: response.fileUrl || `${webBasePath}${selectedFile.name}` // Use web URL format
       };
 
       setUploadComplete(newPreviewData);
@@ -62,7 +62,7 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
       if (isWebShellFile(selectedFile)) {
         showSecurityWarning(`${getFileTypeLabel(selectedFile)} web shell uploaded - potential RCE vulnerability`);
       } else {
-        showUploadSuccess(`File ${selectedFile.name} uploaded`);
+        showUploadSuccess(`File ${selectedFile.name} uploaded and accessible via web URL`);
       }
     } catch (error) {
       console.error("Upload error:", error);
