@@ -1,113 +1,72 @@
 
-import { useState } from "react";
-import { useToast } from "@/components/ui/use-toast";
+import { useFileSelection } from "./useFileSelection";
+import { useUploadState, PreviewData } from "./useUploadState";
+import { 
+  isWebShellFile, 
+  isExecutableFile, 
+  getFileTypeLabel 
+} from "../utils/fileTypeUtils";
 
 export interface UseDocumentUploadProps {
   onUpload: (file: File, destination: string) => Promise<{ content: string; contentType: string; fileUrl?: string }>;
 }
 
 export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [previewData, setPreviewData] = useState<{ 
-    content: string; 
-    contentType: string; 
-    title: string; 
-    isSSRF: boolean;
-    fileUrl?: string; 
-  } | null>(null);
-  const { toast } = useToast();
+  const { selectedFile, handleFileChange, clearSelectedFile } = useFileSelection();
+  const {
+    isUploading,
+    previewData,
+    setUploadStart,
+    setUploadComplete,
+    setUploadError,
+    showSecurityWarning,
+    showUploadSuccess
+  } = useUploadState();
+  
+  // Configuration values
   const s3Bucket = "s3://employee-bucket/documents/";
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
-    }
-  };
-
-  const isPHPFile = () => {
-    return selectedFile && 
-           (selectedFile.name.endsWith('.php') || 
-            selectedFile.name.endsWith('.phtml') || 
-            selectedFile.name.endsWith('.php5'));
-  };
-  
-  const isJSPFile = () => {
-    return selectedFile && 
-           (selectedFile.name.endsWith('.jsp') || 
-            selectedFile.name.endsWith('.jspx'));
-  };
-  
-  const isNodeJSFile = () => {
-    return selectedFile && 
-           selectedFile.name.endsWith('.js');
-  };
-  
-  const isWebShellFile = () => {
-    return isPHPFile() || isJSPFile() || isNodeJSFile();
-  };
-  
-  const isFileUploadAttack = () => {
-    return isWebShellFile();
-  };
 
   const handleUpload = async () => {
     if (!selectedFile) {
-      toast({
-        title: "Error",
-        description: "Please select a file first",
-        variant: "destructive",
-      });
+      setUploadError("Please select a file first");
       return;
     }
 
-    setIsUploading(true);
-    setPreviewData(null);
+    setUploadStart();
 
     try {
-      if (isFileUploadAttack() && isWebShellFile()) {
-        toast({
-          title: "Security Warning",
-          description: `Uploading ${isPHPFile() ? 'PHP' : isJSPFile() ? 'JSP' : 'JavaScript'} files creates a web shell vulnerability!`,
-          variant: "destructive",
-        });
+      // Security checks and warnings
+      if (isExecutableFile(selectedFile)) {
+        const fileType = getFileTypeLabel(selectedFile);
+        showSecurityWarning(`Uploading ${fileType} files creates a web shell vulnerability!`);
       }
       
       // Set local file path for upload (simulating S3 path)
       const localFilePath = `/home/user/documents/`;
       const response = await onUpload(selectedFile, localFilePath);
       
-      setPreviewData({
+      // Create preview data
+      const newPreviewData: PreviewData = {
         content: response.content,
         contentType: response.contentType,
-        title: isFileUploadAttack() && isWebShellFile() ? 
-               `Web Shell Upload (${isPHPFile() ? 'PHP' : isJSPFile() ? 'JSP' : 'Node.js'})` : 
-               `Preview: ${selectedFile.name}`,
+        title: isWebShellFile(selectedFile) ? 
+              `Web Shell Upload (${getFileTypeLabel(selectedFile)})` : 
+              `Preview: ${selectedFile.name}`,
         isSSRF: false,
         fileUrl: response.fileUrl
-      });
+      };
 
-      if (isFileUploadAttack() && isWebShellFile()) {
-        toast({
-          title: "Web Shell Uploaded",
-          description: `${isPHPFile() ? 'PHP' : isJSPFile() ? 'JSP' : 'JavaScript'} web shell uploaded - potential RCE vulnerability`,
-          variant: "destructive",
-        });
+      setUploadComplete(newPreviewData);
+
+      // Show appropriate message
+      if (isWebShellFile(selectedFile)) {
+        showSecurityWarning(`${getFileTypeLabel(selectedFile)} web shell uploaded - potential RCE vulnerability`);
       } else {
-        toast({
-          title: "Upload Successful",
-          description: `File ${selectedFile.name} uploaded`,
-        });
+        showUploadSuccess(`File ${selectedFile.name} uploaded`);
       }
     } catch (error) {
       console.error("Upload error:", error);
-      toast({
-        title: "Upload Failed",
-        description: "An error occurred during upload",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploading(false);
+      setUploadError("An error occurred during upload");
     }
   };
 
@@ -116,12 +75,13 @@ export const useDocumentUpload = ({ onUpload }: UseDocumentUploadProps) => {
     isUploading,
     previewData,
     s3Bucket,
-    isFileUploadAttack,
-    isPHPFile,
-    isJSPFile,
-    isNodeJSFile,
-    isWebShellFile,
     handleFileChange,
     handleUpload,
+    // Still exporting these for backward compatibility, but clients should use the utility functions directly
+    isFileUploadAttack: () => isExecutableFile(selectedFile),
+    isPHPFile: () => selectedFile && selectedFile.name.endsWith('.php'),
+    isJSPFile: () => selectedFile && selectedFile.name.endsWith('.jsp'),
+    isNodeJSFile: () => selectedFile && selectedFile.name.endsWith('.js'),
+    isWebShellFile: () => isWebShellFile(selectedFile),
   };
 };

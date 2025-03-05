@@ -5,6 +5,7 @@ import PreviewWindow from "@/components/PreviewWindow";
 import DropZone from "./components/DropZone";
 import UploadButton from "./components/UploadButton";
 import { useDocumentUpload } from "./hooks/useDocumentUpload";
+import { isWebShellFile } from "./utils/fileTypeUtils";
 import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
