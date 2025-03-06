@@ -317,7 +317,7 @@ jobs:
           if [ -n "$DB_INSTANCE" ] && [ "$DB_INSTANCE" != "[]" ]; then
             RDS_ENDPOINT=$(echo $DB_INSTANCE | jq -r '.[0].Endpoint.Address')
             RDS_PORT=$(echo $DB_INSTANCE | jq -r '.[0].Endpoint.Port')
-            log "✅ Found RDS endpoint: $RDS_ENDPOINT:$RDS_PORT"
+            echo "✅ Found RDS endpoint: $RDS_ENDPOINT:$RDS_PORT"
             
             # Make database initialization more robust on the EC2 instance
             aws ssm send-command \
@@ -341,7 +341,7 @@ jobs:
               --comment "Initialize database connection" \
               --output text
           
-            log "✅ Database initialization command sent to instance"
+            echo "✅ Database initialization command sent to instance"
           fi
 
       - name: Setup Docker
