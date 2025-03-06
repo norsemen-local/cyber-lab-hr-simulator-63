@@ -24,7 +24,7 @@ const Register = () => {
     return <Navigate to="/" />;
   }
   
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Basic validation
@@ -59,9 +59,8 @@ const Register = () => {
     
     setLoading(true);
     
-    // Simulate API call delay
-    setTimeout(() => {
-      const user = register(email, password, name, companyCode);
+    try {
+      const user = await register(email, password, name, companyCode);
       
       if (user) {
         setCurrentUser(user);
@@ -77,9 +76,16 @@ const Register = () => {
           variant: "destructive",
         });
       }
-      
+    } catch (error) {
+      console.error("Registration error:", error);
+      toast({
+        title: "Registration failed",
+        description: "An error occurred during registration",
+        variant: "destructive",
+      });
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
   
   return (
