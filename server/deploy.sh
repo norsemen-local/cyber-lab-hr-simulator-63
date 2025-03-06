@@ -17,6 +17,7 @@ fi
 echo "Getting EC2 instance ID..."
 cd terraform
 INSTANCE_ID=$(terraform output -raw instance_id)
+RDS_ENDPOINT=$(terraform output -raw rds_endpoint)
 cd ..
 
 if [ -z "$INSTANCE_ID" ]; then
@@ -25,6 +26,7 @@ if [ -z "$INSTANCE_ID" ]; then
 fi
 
 echo "Deploying to EC2 instance: $INSTANCE_ID"
+echo "Using RDS endpoint: $RDS_ENDPOINT"
 
 # Create a deployment package
 echo "Creating deployment package..."
@@ -50,7 +52,14 @@ INSTANCE_IP=$(aws ec2 describe-instances \
 echo "Deploying code to instance at $INSTANCE_IP..."
 scp -o StrictHostKeyChecking=no deployment.zip ec2-user@$INSTANCE_IP:~/
 
-ssh -o StrictHostKeyChecking=no ec2-user@$INSTANCE_IP << 'ENDSSH'
+# Get database credentials from terraform (securely)
+DB_USERNAME=$(cd terraform && terraform output -raw db_username)
+DB_PASSWORD=$(cd terraform && terraform output -raw db_password)
+
+# Escape special characters
+DB_PASSWORD_ESCAPED=$(echo "$DB_PASSWORD" | sed 's/\\/\\\\/g; s/\//\\\//g; s/&/\\&/g')
+
+ssh -o StrictHostKeyChecking=no ec2-user@$INSTANCE_IP << EOF
     # Extract deployment package
     mkdir -p ~/hr-server
     unzip -o ~/deployment.zip -d ~/hr-server
@@ -66,8 +75,18 @@ ssh -o StrictHostKeyChecking=no ec2-user@$INSTANCE_IP << 'ENDSSH'
     # Install dependencies
     npm install
     
-    # Set up the server as a systemd service
-    sudo bash -c 'cat > /etc/systemd/system/hr-server.service << EOF
+    # Set up environment file with RDS credentials
+    cat > .env << ENVFILE
+DB_HOST=$RDS_ENDPOINT
+DB_USER=$DB_USERNAME
+DB_PASSWORD=$DB_PASSWORD_ESCAPED
+DB_NAME=hr_portal
+DB_PORT=3306
+PORT=80
+ENVFILE
+
+    # Update systemd service to use env file
+    sudo bash -c 'cat > /etc/systemd/system/hr-server.service << SERVICEEOF
 [Unit]
 Description=HR Portal Server
 After=network.target
@@ -76,19 +95,19 @@ After=network.target
 ExecStart=/usr/bin/node /home/ec2-user/hr-server/index.js
 Restart=always
 User=ec2-user
-Environment=PORT=80
+EnvironmentFile=/home/ec2-user/hr-server/.env
 WorkingDirectory=/home/ec2-user/hr-server
 
 [Install]
 WantedBy=multi-user.target
-EOF'
+SERVICEEOF'
 
     # Reload systemd, enable and start service
     sudo systemctl daemon-reload
     sudo systemctl enable hr-server
     sudo systemctl restart hr-server
     echo "Deployment complete, service started"
-ENDSSH
+EOF
 
 # Clean up
 rm deployment.zip

@@ -10,4 +10,9 @@ services:
       - ./uploads:/app/uploads
     environment:
       - PORT=3000
+      - DB_HOST=${DB_HOST:-localhost}
+      - DB_USER=${DB_USER:-admin}
+      - DB_PASSWORD=${DB_PASSWORD:-admin}
+      - DB_NAME=${DB_NAME:-hr_portal}
+      - DB_PORT=${DB_PORT:-3306}
     restart: unless-stopped

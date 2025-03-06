@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,34 +48,31 @@ const Login = () => {
       // Log the connection attempt - in a real app this would connect to an actual RDS instance
       console.log(`[DB CONNECTION]: Connecting to MySQL database at ${DB_ENDPOINT}`);
       
-      // Simulate network latency
-      setTimeout(() => {
-        // Call the login function which has a REAL SQL injection vulnerability
-        const user = login(email, password);
-        
-        if (user) {
-          // Check if this was likely an injection attack
-          if (email.includes("'") || email.includes("--")) {
-            setInjectionSuccess(true);
-            console.log("[SECURITY ALERT]: Potential SQL injection detected in successful login");
-          }
-          
-          setCurrentUser(user);
-          toast({
-            title: "Logged in successfully",
-            description: `Welcome back, ${user.name}!`,
-          });
-          navigate("/");
-        } else {
-          toast({
-            title: "Login failed",
-            description: "Invalid email or password",
-            variant: "destructive",
-          });
+      // Call the login function which has a REAL SQL injection vulnerability
+      const user = await login(email, password);
+      
+      if (user) {
+        // Check if this was likely an injection attack
+        if (email.includes("'") || email.includes("--")) {
+          setInjectionSuccess(true);
+          console.log("[SECURITY ALERT]: Potential SQL injection detected in successful login");
         }
         
-        setLoading(false);
-      }, 1000);
+        setCurrentUser(user);
+        toast({
+          title: "Logged in successfully",
+          description: `Welcome back, ${user.name}!`,
+        });
+        navigate("/");
+      } else {
+        toast({
+          title: "Login failed",
+          description: "Invalid email or password",
+          variant: "destructive",
+        });
+      }
+      
+      setLoading(false);
     } catch (error) {
       console.error("Login error:", error);
       toast({

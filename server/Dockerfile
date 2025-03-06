@@ -18,5 +18,9 @@ RUN mkdir -p /app/uploads && chmod 777 /app/uploads
 # Expose the port the app runs on
 EXPOSE 3000
 
+# Startup script to wait for database then start app
+COPY ./start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
 # Command to run the application
-CMD ["node", "index.js"]
+CMD ["/app/start.sh"]
