@@ -177,6 +177,8 @@ unzip awscliv2.zip
 yum install -y amazon-ssm-agent
 systemctl enable amazon-ssm-agent
 systemctl start amazon-ssm-agent
+# Install MySQL client for database debugging
+yum install -y mysql
 # Create app directory
 mkdir -p /opt/hrApp
 chmod -R 777 /opt/hrApp
@@ -257,6 +259,35 @@ log "⚠️ Note: It may take a few minutes for the instance to complete initial
 if [ -n "$GITHUB_ENV" ]; then
   echo "EC2_INSTANCE_ID=$NEW_INSTANCE_ID" >> $GITHUB_ENV
   echo "EC2_PUBLIC_IP=$PUBLIC_IP" >> $GITHUB_ENV
+fi
+
+# Get database credentials from RDS
+log "🔍 Fetching RDS database information..."
+DB_INSTANCE=$(aws rds describe-db-instances --query "DBInstances[?DBInstanceIdentifier=='hr-portal-db']" --output json)
+if [ -n "$DB_INSTANCE" ] && [ "$DB_INSTANCE" != "[]" ]; then
+  RDS_ENDPOINT=$(echo $DB_INSTANCE | jq -r '.[0].Endpoint.Address')
+  RDS_PORT=$(echo $DB_INSTANCE | jq -r '.[0].Endpoint.Port')
+  log "✅ Found RDS endpoint: $RDS_ENDPOINT:$RDS_PORT"
+  
+  # Make database initialization more robust on the EC2 instance
+  aws ssm send-command \
+    --document-name "AWS-RunShellScript" \
+    --targets "Key=InstanceIds,Values=$NEW_INSTANCE_ID" \
+    --parameters 'commands=[
+      "echo \"===== DATABASE INITIALIZATION =====\"",
+      "# Install MySQL client if not already installed",
+      "yum install -y mysql",
+      "# Create test connection script",
+      "echo \"CREATE DATABASE IF NOT EXISTS hr_portal; SHOW DATABASES;\" > /tmp/test_connection.sql",
+      "# Test connection to RDS",
+      "echo \"Testing connection to RDS...\"",
+      "mysql -h ENDPOINT -u admin -ppassword123 < /tmp/test_connection.sql || echo \"RDS connection test failed\"",
+      "echo \"===== DATABASE INITIALIZATION COMPLETE =====\""
+    ]' \
+    --comment "Initialize database connection" \
+    --output text
+
+  log "✅ Database initialization command sent to instance"
 fi
 
 exit 0

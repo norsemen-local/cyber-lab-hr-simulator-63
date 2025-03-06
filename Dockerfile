@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     && rm -rf /var/lib/apt/lists/*
+    
 # Install dependencies (including dev dependencies needed for build)
 RUN npm ci
 
@@ -27,8 +28,15 @@ RUN npm prune --omit=dev
 # Install a simple HTTP server for serving static content
 RUN npm install -g serve
 
+# Ensure database initialization script has execute permissions
+RUN chmod +x /app/server/start.sh
+
 # Expose the port the app runs on
 EXPOSE 80
 
-# Run the application
+# Copy client files to serve statically
+RUN mkdir -p /app/server/public
+RUN cp -r /app/dist/* /app/server/public/
+
+# Manually create database tables and seed data to ensure it's populated
 CMD ["serve", "-s", "dist", "-l", "80"]

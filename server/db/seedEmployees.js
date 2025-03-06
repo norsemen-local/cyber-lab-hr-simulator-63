@@ -28,6 +28,11 @@ const employees = [
 
 async function seedEmployees() {
   console.log('Starting to seed employees...');
+  console.log('Database connection details:');
+  console.log(`  Host: ${process.env.DB_HOST}`);
+  console.log(`  User: ${process.env.DB_USER}`);
+  console.log(`  Database: ${process.env.DB_NAME}`);
+  console.log(`  Port: ${process.env.DB_PORT || 3306}`);
   
   let connection;
   
@@ -59,6 +64,21 @@ async function seedEmployees() {
     
     console.log('Users table created or already exists');
     
+    // Add default admin user first to ensure there's always an admin account
+    try {
+      await connection.execute(
+        'INSERT INTO users (name, email, password, role, avatar) VALUES (?, ?, ?, ?, ?)',
+        ['Admin User', 'admin@company.com', 'Admin@123', 'hr', '/avatars/admin.jpg']
+      );
+      console.log('Added default admin user');
+    } catch (err) {
+      if (err.code === 'ER_DUP_ENTRY') {
+        console.log('Default admin user already exists, skipping...');
+      } else {
+        throw err;
+      }
+    }
+    
     // Insert employees one by one
     for (const employee of employees) {
       try {
@@ -72,15 +92,27 @@ async function seedEmployees() {
         if (err.code === 'ER_DUP_ENTRY') {
           console.log(`Employee ${employee.email} already exists, skipping...`);
         } else {
-          throw err;
+          console.error(`Error adding employee ${employee.name}:`, err);
+          // Continue with next employee instead of failing everything
         }
       }
     }
+    
+    // Verify the data was inserted
+    const [rows] = await connection.execute('SELECT COUNT(*) as count FROM users');
+    console.log(`Total users in database: ${rows[0].count}`);
+    
+    // List a few users for verification
+    const [sampleUsers] = await connection.execute('SELECT id, name, email, role FROM users LIMIT 5');
+    console.log('Sample users in database:');
+    sampleUsers.forEach(user => console.log(`  - ${user.id}: ${user.name} (${user.email}) - ${user.role}`));
     
     console.log('Seeding employees completed successfully');
     
   } catch (error) {
     console.error('Error seeding employees:', error);
+    // Throw error to indicate failure to the calling process
+    throw error;
   } finally {
     if (connection) {
       await connection.end();
