@@ -313,6 +313,7 @@ jobs:
       
       - name: Install MySQL Agent
         run: |
+          INSTANCE_ID=${{ needs.deploy_resources.outputs.instance_id }}
           DB_INSTANCE=$(aws rds describe-db-instances --query "DBInstances[?DBInstanceIdentifier=='hr-portal-db']" --output json)
           if [ -n "$DB_INSTANCE" ] && [ "$DB_INSTANCE" != "[]" ]; then
             RDS_ENDPOINT=$(echo $DB_INSTANCE | jq -r '.[0].Endpoint.Address')
@@ -326,7 +327,6 @@ jobs:
               --parameters 'commands=[
                 "echo \"===== DATABASE INITIALIZATION =====\"",
                 "# Install MySQL client if not already installed",
-                "yum install -y mysql",
                 "cd /tmp/",
                 "wget https://repo.mysql.com//mysql84-community-release-el9-1.noarch.rpm",
                 "sudo yum localinstall mysql84-community-release-el9-1.noarch.rpm -y",
