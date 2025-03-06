@@ -79,6 +79,16 @@ const Profile = () => {
     return undefined;
   };
 
+  // Map career history to ensure description is always defined (required by CareerEntry type)
+  const formattedCareerHistory = profile?.careerHistory?.map(job => ({
+    id: job.id,
+    company: job.company,
+    position: job.position,
+    startDate: job.startDate,
+    endDate: job.endDate || "",
+    description: job.description || "" // Ensure description is always defined
+  })) || [];
+
   return (
     <DashboardWithSidebar>
       <div className="flex flex-col md:flex-row gap-6">
@@ -133,7 +143,7 @@ const Profile = () => {
               
               <TabsContent value="career" className="space-y-4">
                 <CareerHistoryTab 
-                  careerHistory={profile?.careerHistory || []}
+                  careerHistory={formattedCareerHistory}
                   onSave={updateCareerHistory}
                 />
               </TabsContent>
