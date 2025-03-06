@@ -85,6 +85,10 @@ DB_PORT=3306
 PORT=80
 ENVFILE
 
+    # Seed the database with employee records
+    echo "Seeding the database with employee records..."
+    node db/seedEmployees.js
+
     # Update systemd service to use env file
     sudo bash -c 'cat > /etc/systemd/system/hr-server.service << SERVICEEOF
 [Unit]
