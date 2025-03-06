@@ -68,6 +68,73 @@ jobs:
             echo "security_groups=$SECURITY_GROUPS" >> $GITHUB_ENV
             echo "iam_profile=$IAM_PROFILE" >> $GITHUB_ENV
             echo "ami_id=$AMI_ID" >> $GITHUB_ENV
+          else
+            echo "No existing EC2 instance found. Querying details from jenkins_ec2..."
+            # Fetch details from existing jenkins_ec2 instance
+            JENKINS_INSTANCE_ID=$(aws ec2 describe-instances \
+                --filters "Name=tag:Name,Values=Demo-Jenkins" \
+                          "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+                --query "Reservations[0].Instances[0].InstanceId" \
+                --output text)
+        
+            if [ -z "$JENKINS_INSTANCE_ID" ]; then
+                echo "Error: Could not find an EC2 instance tagged as jenkins_ec2."
+                exit 1
+            fi
+        
+            # Retrieve details of jenkins_ec2
+            JENKINS_DETAILS=$(aws ec2 describe-instances --instance-ids $JENKINS_INSTANCE_ID --output json)
+        
+            VPC_ID=$(echo "$JENKINS_DETAILS" | jq -r '.Reservations[0].Instances[0].VpcId')
+            SUBNET_ID=$(echo "$JENKINS_DETAILS" | jq -r '.Reservations[0].Instances[0].SubnetId')
+            SECURITY_GROUP_IDS=$(echo "$JENKINS_DETAILS" | jq -r '.Reservations[0].Instances[0].SecurityGroups[].GroupId' | tr '\n' ' ')
+            AMI_ID=$(echo "$JENKINS_DETAILS" | jq -r '.Reservations[0].Instances[0].ImageId')
+        
+            echo "Retrieved details from jenkins_ec2:"
+            echo "VPC ID: $VPC_ID"
+            echo "Subnet ID: $SUBNET_ID"
+            echo "Security Groups: $SECURITY_GROUP_IDS"
+            echo "AMI ID: $AMI_ID"
+        
+            # Validate required parameters
+            if [[ -z "$SUBNET_ID" || -z "$SECURITY_GROUP_IDS" || -z "$AMI_ID" ]]; then
+                echo "Error: Missing required resources from jenkins_ec2."
+                exit 1
+            fi
+        
+            echo "Launching new EC2 instance..."
+        
+            # Launch a new EC2 instance using retrieved parameters
+            NEW_INSTANCE_ID=$(aws ec2 run-instances \
+                --image-id "$AMI_ID" \
+                --instance-type "t2.micro" \
+                --subnet-id "$SUBNET_ID" \
+                --security-group-ids $SECURITY_GROUP_IDS \
+                --iam-instance-profile Name="hr-portal-ec2-profile" \
+                --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=hr-portal-ec2},{Key=APP,Value=DEMO-HR-APPLICATION}]' \
+                --query "Instances[0].InstanceId" \
+                --output text)
+        
+            echo "New EC2 instance created: $NEW_INSTANCE_ID"
+
+            EC2_INSTANCES=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=hr-portal-ec2" "Name=instance-state-name,Values=pending,running,stopping,stopped" --query "Reservations[*].Instances[*].InstanceId" --output text)
+            echo "EC2 instances found: $EC2_INSTANCES"
+            # Get details of first instance for reference
+            INSTANCE_ID=$(echo $EC2_INSTANCES | awk '{print $1}')
+            INSTANCE_DETAILS=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --output json)
+
+            # Extract important details
+            VPC_ID=$(echo "$INSTANCE_DETAILS" | jq -r '.Reservations[0].Instances[0].VpcId')
+            SUBNET_ID=$(echo "$INSTANCE_DETAILS" | jq -r '.Reservations[0].Instances[0].SubnetId')
+            SECURITY_GROUPS=$(echo "$INSTANCE_DETAILS" | jq -r '.Reservations[0].Instances[0].SecurityGroups[].GroupId' | tr '\n' ' ')
+            IAM_PROFILE=$(echo "$INSTANCE_DETAILS" | jq -r '.Reservations[0].Instances[0].IamInstanceProfile.Arn // "none"')
+            AMI_ID=$(echo "$INSTANCE_DETAILS" | jq -r '.Reservations[0].Instances[0].ImageId')
+
+            echo "vpc_id=$VPC_ID" >> $GITHUB_ENV
+            echo "subnet_id=$SUBNET_ID" >> $GITHUB_ENV
+            echo "security_groups=$SECURITY_GROUPS" >> $GITHUB_ENV
+            echo "iam_profile=$IAM_PROFILE" >> $GITHUB_ENV
+            echo "ami_id=$AMI_ID" >> $GITHUB_ENV
           fi
 
           if [ -n "$ALB_EXISTS" ]; then
