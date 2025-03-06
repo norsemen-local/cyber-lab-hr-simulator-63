@@ -16,10 +16,10 @@ export {
   getCompanyCode,
   updateCompanyCode,
   
-  // Types
-  User,
-  
   // Constants
   API_URL,
   DB_ENDPOINT
 } from '../features/auth';
+
+// Re-export types with the proper 'export type' syntax
+export type { User } from '../features/auth';
