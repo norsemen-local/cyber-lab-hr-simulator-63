@@ -227,7 +227,7 @@ async function setupDatabase() {
       // Add education
       await connection.execute(
         'INSERT INTO education (user_id, institution, degree, field_of_study, graduation_year) VALUES (?, ?, ?, ?, ?)',
-        [employeeId, 'Stanford University', 'Master\'s', 'Computer Science', '2018']
+        [employeeId, 'Stanford University', 'Master\\'s', 'Computer Science', '2018']
       );
       
       console.log('Employee user created with ID:', employeeId);

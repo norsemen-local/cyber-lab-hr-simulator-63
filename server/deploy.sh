@@ -85,6 +85,88 @@ DB_PORT=3306
 PORT=80
 ENVFILE
 
+    # Run the database setup script to create tables and seed data
+    echo "Setting up database tables and seeding data..."
+    node -e "$(cat << 'SCRIPTEND'
+const mysql = require('mysql2/promise');
+require('dotenv').config();
+
+async function setupDatabase() {
+  console.log('Connecting to database:', {
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 3306
+  });
+  
+  try {
+    const connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      port: process.env.DB_PORT || 3306
+    });
+    
+    console.log('Connected to database successfully');
+    
+    console.log('Creating users table...');
+    await connection.execute(\`
+      CREATE TABLE IF NOT EXISTS users (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        email VARCHAR(100) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL,
+        role ENUM('employee', 'manager', 'hr') NOT NULL DEFAULT 'employee',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    \`);
+    
+    // Insert a sample admin user if it doesn't exist
+    console.log('Checking for admin user...');
+    const [adminCheck] = await connection.execute('SELECT * FROM users WHERE email = ?', ['admin@example.com']);
+    
+    if (adminCheck.length === 0) {
+      console.log('Creating admin user...');
+      await connection.execute(
+        'INSERT INTO users (email, password, role) VALUES (?, ?, ?)',
+        ['admin@example.com', '$2a$10$zGqHcFXPLxjGUUQFc0LKVeEIRlVOx7uJPJMlchkCltGUhCv2efTNS', 'hr']
+      );
+      console.log('Admin user created');
+    } else {
+      console.log('Admin user already exists');
+    }
+    
+    // Add more users for testing
+    for (let i = 1; i <= 10; i++) {
+      try {
+        await connection.execute(
+          'INSERT INTO users (email, password, role) VALUES (?, ?, ?)',
+          [\`test.user\${i}@example.com\`, '$2a$10$zGqHcFXPLxjGUUQFc0LKVeEIRlVOx7uJPJMlchkCltGUhCv2efTNS', 'employee']
+        );
+        console.log(\`Created test user \${i}\`);
+      } catch (err) {
+        // Skip if user already exists
+        if (err.code === 'ER_DUP_ENTRY') {
+          console.log(\`User test.user\${i}@example.com already exists\`);
+        } else {
+          throw err;
+        }
+      }
+    }
+    
+    await connection.end();
+    console.log('Database setup completed successfully');
+  } catch (error) {
+    console.error('Database setup error:', error);
+    process.exit(1);
+  }
+}
+
+setupDatabase();
+SCRIPTEND
+)"
+
     # Seed the database with employee records
     echo "Seeding the database with employee records..."
     node db/seedEmployees.js

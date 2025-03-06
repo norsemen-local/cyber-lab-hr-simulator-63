@@ -20,8 +20,10 @@ const DatabaseStats = () => {
   useEffect(() => {
     const fetchDatabaseStats = async () => {
       try {
-        // In a real application, you would make an API call to a backend service
-        // that connects to the database and returns the count
+        // In a real-world scenario, we would make an API call
+        // For demo purposes, let's simulate a user count fetch
+        // You can replace this with an actual API call to your backend
+        // that queries SELECT COUNT(*) FROM users;
         const response = await fetch('/api/database/stats');
         
         if (!response.ok) {
@@ -51,12 +53,13 @@ const DatabaseStats = () => {
     };
 
     // For demo purposes, we'll simulate the API call with a timeout
-    // and hardcoded values since we don't have an actual backend connected
+    // In a real application, you would call the fetchDatabaseStats function
     const simulateApiCall = () => {
       setTimeout(() => {
-        // Simulate successful API response
+        // Simulate a successful API response with 12 users
+        // This would ideally be the actual count from your database
         setStats({
-          userCount: 12, // Sample value
+          userCount: 12, // This is a hardcoded sample value
           loading: false,
           error: null
         });
