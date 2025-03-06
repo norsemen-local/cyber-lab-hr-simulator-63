@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -55,7 +56,7 @@ const Profile = () => {
               position: profile?.position || "",
               department: profile?.department || "",
               phone: profile?.phone || "",
-              address: `${profile?.address.city}, ${profile?.address.state}`,
+              address: `${profile?.address?.city || ""}, ${profile?.address?.state || ""}`,
               hireDate: profile?.joinDate || "",
               manager: profile?.manager || ""
             }}
@@ -105,7 +106,13 @@ const Profile = () => {
               
               <TabsContent value="documents" className="space-y-4">
                 <DocumentsTab 
-                  documents={profile?.documents || []}
+                  documents={profile?.documents?.map(doc => ({
+                    id: doc.id,
+                    name: doc.name,
+                    date: doc.uploadDate,
+                    type: doc.type,
+                    content: doc.content
+                  })) || []}
                   onUpload={addDocument}
                   onView={getDocument}
                 />

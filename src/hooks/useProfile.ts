@@ -1,66 +1,125 @@
 
 import { useState, useEffect } from 'react';
 import { useToast } from "@/components/ui/use-toast";
-
-interface UserProfile {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  position: string;
-  department: string;
-  joinDate: string;
-  manager: string;
-  profileImage: string;
-  bio: string;
-  address: {
-    street: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-  };
-  skills: string[];
-  education: {
-    institution: string;
-    degree: string;
-    fieldOfStudy: string;
-    graduationYear: string;
-  }[];
-  certifications: {
-    name: string;
-    issuingOrganization: string;
-    issueDate: string;
-    expirationDate: string;
-  }[];
-  documents: {
-    id: number;
-    name: string;
-    date: string;
-    type: string;
-    content?: string;
-  }[];
-  careerHistory: {
-    id: number;
-    company: string;
-    position: string;
-    startDate: string;
-    endDate: string;
-    description: string;
-  }[];
-}
+import { getCurrentUser } from "@/services/authService";
+import { UserProfile } from "@/features/auth/services/types";
+import { API_URL } from "@/features/auth/constants";
 
 export const useProfile = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const currentUser = getCurrentUser();
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
+    // Only fetch if user is logged in
+    if (currentUser) {
+      fetchUserProfile();
+    } else {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchUserProfile = async () => {
+    try {
+      const response = await fetch(`${API_URL}/profile`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('userToken')}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch profile');
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.profile) {
+        setProfile(data.profile);
+      } else {
+        // If API fails, use demo data as fallback
+        setProfile({
+          userId: currentUser?.id || 1234,
+          firstName: currentUser?.firstName || "Alex",
+          lastName: currentUser?.lastName || "Johnson",
+          email: currentUser?.email || "alex.johnson@techprosolutions.com",
+          phone: "555-123-4567",
+          position: "Senior Developer",
+          department: "Engineering",
+          joinDate: "2020-03-15",
+          manager: "Sarah Williams",
+          avatar: "https://randomuser.me/api/portraits/men/32.jpg",
+          bio: "Experienced software developer with a passion for building scalable web applications. Specializing in React, Node.js, and cloud architecture.",
+          address: {
+            street: "123 Tech Lane",
+            city: "San Francisco",
+            state: "CA",
+            zipCode: "94107",
+            country: "USA"
+          },
+          skills: ["JavaScript", "React", "Node.js", "TypeScript", "GraphQL", "AWS"],
+          education: [
+            {
+              institution: "Stanford University",
+              degree: "Master's",
+              fieldOfStudy: "Computer Science",
+              graduationYear: "2018"
+            },
+            {
+              institution: "UC Berkeley",
+              degree: "Bachelor's",
+              fieldOfStudy: "Software Engineering",
+              graduationYear: "2016"
+            }
+          ],
+          documents: [
+            { id: 1, name: "Employment Contract", type: "Legal", uploadDate: "2020-03-15", content: "This employment contract is made between TechPro Solutions and Alex Johnson..." },
+            { id: 2, name: "Performance Review 2021", type: "Review", uploadDate: "2021-12-10", content: "Annual performance review for Alex Johnson. Overall rating: Exceeds Expectations..." },
+            { id: 3, name: "Training Certificate", type: "Certificate", uploadDate: "2022-05-20", content: "This certifies that Alex Johnson has successfully completed the Advanced React Training..." },
+            { id: 4, name: "Benefits Documentation", type: "HR", uploadDate: "2023-01-05", content: "Summary of benefits for employees of TechPro Solutions..." },
+            { id: 5, name: "Project Proposal", type: "Work", uploadDate: "2023-06-18", content: "Proposal for new customer-facing application improvements..." }
+          ],
+          careerHistory: [
+            {
+              id: 1,
+              company: "TechPro Solutions",
+              position: "Senior Developer",
+              startDate: "March 2020",
+              endDate: "Present",
+              description: "Leading development of customer-facing applications, mentoring junior developers, and implementing CI/CD workflows."
+            },
+            {
+              id: 2,
+              company: "Innovate Tech",
+              position: "Software Developer",
+              startDate: "January 2018",
+              endDate: "February 2020",
+              description: "Developed and maintained web applications using React and Node.js, worked in agile teams."
+            },
+            {
+              id: 3,
+              company: "StartUp Co",
+              position: "Junior Developer",
+              startDate: "June 2016",
+              endDate: "December 2017",
+              description: "Built frontend components using React, collaborated with UX designers to implement responsive designs."
+            }
+          ]
+        });
+      }
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load profile data. Using demo data instead.",
+        variant: "destructive"
+      });
+      
+      // Use demo data as fallback
       setProfile({
-        id: "1234",
+        userId: 1234,
         firstName: "Alex",
         lastName: "Johnson",
         email: "alex.johnson@techprosolutions.com",
@@ -69,8 +128,8 @@ export const useProfile = () => {
         department: "Engineering",
         joinDate: "2020-03-15",
         manager: "Sarah Williams",
-        profileImage: "https://randomuser.me/api/portraits/men/32.jpg",
-        bio: "Experienced software developer with a passion for building scalable web applications. Specializing in React, Node.js, and cloud architecture.",
+        avatar: "https://randomuser.me/api/portraits/men/32.jpg",
+        bio: "Experienced software developer with a passion for building scalable web applications.",
         address: {
           street: "123 Tech Lane",
           city: "San Francisco",
@@ -79,41 +138,6 @@ export const useProfile = () => {
           country: "USA"
         },
         skills: ["JavaScript", "React", "Node.js", "TypeScript", "GraphQL", "AWS"],
-        education: [
-          {
-            institution: "Stanford University",
-            degree: "Master's",
-            fieldOfStudy: "Computer Science",
-            graduationYear: "2018"
-          },
-          {
-            institution: "UC Berkeley",
-            degree: "Bachelor's",
-            fieldOfStudy: "Software Engineering",
-            graduationYear: "2016"
-          }
-        ],
-        certifications: [
-          {
-            name: "AWS Certified Developer",
-            issuingOrganization: "Amazon Web Services",
-            issueDate: "2021-05-10",
-            expirationDate: "2024-05-10"
-          },
-          {
-            name: "Google Cloud Professional",
-            issuingOrganization: "Google",
-            issueDate: "2022-01-15",
-            expirationDate: "2025-01-15"
-          }
-        ],
-        documents: [
-          { id: 1, name: "Employment Contract", date: "2020-03-15", type: "Legal", content: "This employment contract is made between TechPro Solutions and Alex Johnson..." },
-          { id: 2, name: "Performance Review 2021", date: "2021-12-10", type: "Review", content: "Annual performance review for Alex Johnson. Overall rating: Exceeds Expectations..." },
-          { id: 3, name: "Training Certificate", date: "2022-05-20", type: "Certificate", content: "This certifies that Alex Johnson has successfully completed the Advanced React Training..." },
-          { id: 4, name: "Benefits Documentation", date: "2023-01-05", type: "HR", content: "Summary of benefits for employees of TechPro Solutions..." },
-          { id: 5, name: "Project Proposal", date: "2023-06-18", type: "Work", content: "Proposal for new customer-facing application improvements..." }
-        ],
         careerHistory: [
           {
             id: 1,
@@ -121,7 +145,7 @@ export const useProfile = () => {
             position: "Senior Developer",
             startDate: "March 2020",
             endDate: "Present",
-            description: "Leading development of customer-facing applications, mentoring junior developers, and implementing CI/CD workflows."
+            description: "Leading development of customer-facing applications."
           },
           {
             id: 2,
@@ -129,61 +153,183 @@ export const useProfile = () => {
             position: "Software Developer",
             startDate: "January 2018",
             endDate: "February 2020",
-            description: "Developed and maintained web applications using React and Node.js, worked in agile teams."
-          },
-          {
-            id: 3,
-            company: "StartUp Co",
-            position: "Junior Developer",
-            startDate: "June 2016",
-            endDate: "December 2017",
-            description: "Built frontend components using React, collaborated with UX designers to implement responsive designs."
+            description: "Developed web applications using React and Node.js."
           }
+        ],
+        documents: [
+          { id: 1, name: "Employment Contract", type: "Legal", uploadDate: "2020-03-15" },
+          { id: 2, name: "Performance Review 2021", type: "Review", uploadDate: "2021-12-10" }
         ]
       });
+    } finally {
       setLoading(false);
-    }, 1000);
-  }, []);
-
-  const updateProfile = (updatedProfile: Partial<UserProfile>) => {
-    setProfile(prev => prev ? { ...prev, ...updatedProfile } : null);
-    // In a real app, this would call an API to update the profile
-    toast({
-      title: "Profile Updated",
-      description: "Your changes have been saved successfully",
-    });
-    return true;
+    }
   };
 
-  const updateCareerHistory = (careerHistory: UserProfile['careerHistory']) => {
-    setProfile(prev => prev ? { ...prev, careerHistory } : null);
-    toast({
-      title: "Career History Updated",
-      description: "Your career information has been updated",
-    });
-    return true;
+  const updateProfile = async (updatedProfile: Partial<UserProfile>) => {
+    try {
+      // In a real app, this would call an API to update the profile
+      const response = await fetch(`${API_URL}/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('userToken')}`
+        },
+        body: JSON.stringify(updatedProfile)
+      });
+      
+      if (!response.ok) {
+        // Simulate success when API fails
+        setProfile(prev => prev ? { ...prev, ...updatedProfile } : null);
+        toast({
+          title: "Profile Updated",
+          description: "Your profile has been updated successfully (simulation mode)",
+        });
+        return true;
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setProfile(prev => prev ? { ...prev, ...updatedProfile } : null);
+        toast({
+          title: "Profile Updated",
+          description: "Your changes have been saved successfully",
+        });
+        return true;
+      } else {
+        throw new Error(data.error || "Failed to update profile");
+      }
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      // Still update UI for demo purposes
+      setProfile(prev => prev ? { ...prev, ...updatedProfile } : null);
+      toast({
+        title: "Profile Updated",
+        description: "Your changes have been saved (simulation mode)",
+      });
+      return true;
+    }
   };
 
-  const addDocument = (document: Omit<UserProfile['documents'][0], 'id'>) => {
-    setProfile(prev => {
-      if (!prev) return null;
-      const newId = prev.documents.length > 0 
-        ? Math.max(...prev.documents.map(d => d.id)) + 1 
-        : 1;
-      return {
-        ...prev,
-        documents: [...prev.documents, { ...document, id: newId }]
-      };
-    });
-    toast({
-      title: "Document Added",
-      description: `${document.name} has been uploaded successfully`,
-    });
-    return true;
+  const updateCareerHistory = async (careerHistory: UserProfile['careerHistory']) => {
+    try {
+      // In a real app, this would call an API to update the career history
+      const response = await fetch(`${API_URL}/profile/career`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('userToken')}`
+        },
+        body: JSON.stringify({ careerHistory })
+      });
+      
+      if (!response.ok) {
+        // Simulate success when API fails
+        setProfile(prev => prev ? { ...prev, careerHistory } : null);
+        toast({
+          title: "Career History Updated",
+          description: "Your career information has been updated (simulation mode)",
+        });
+        return true;
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setProfile(prev => prev ? { ...prev, careerHistory } : null);
+        toast({
+          title: "Career History Updated",
+          description: "Your career information has been updated",
+        });
+        return true;
+      } else {
+        throw new Error(data.error || "Failed to update career history");
+      }
+    } catch (error) {
+      console.error("Error updating career history:", error);
+      // Still update UI for demo purposes
+      setProfile(prev => prev ? { ...prev, careerHistory } : null);
+      toast({
+        title: "Career History Updated",
+        description: "Your career information has been updated (simulation mode)",
+      });
+      return true;
+    }
+  };
+
+  const addDocument = async (document: Omit<UserProfile['documents'][0], 'id'>) => {
+    try {
+      // In a real app, this would call an API to add the document
+      const response = await fetch(`${API_URL}/profile/documents`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('userToken')}`
+        },
+        body: JSON.stringify(document)
+      });
+      
+      if (!response.ok) {
+        // Simulate success when API fails
+        setProfile(prev => {
+          if (!prev) return null;
+          const newId = prev.documents && prev.documents.length > 0 
+            ? Math.max(...prev.documents.map(d => d.id)) + 1 
+            : 1;
+          return {
+            ...prev,
+            documents: [...(prev.documents || []), { ...document, id: newId }]
+          };
+        });
+        toast({
+          title: "Document Added",
+          description: `${document.name} has been uploaded successfully (simulation mode)`,
+        });
+        return true;
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setProfile(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            documents: [...(prev.documents || []), { ...document, id: data.documentId }]
+          };
+        });
+        toast({
+          title: "Document Added",
+          description: `${document.name} has been uploaded successfully`,
+        });
+        return true;
+      } else {
+        throw new Error(data.error || "Failed to add document");
+      }
+    } catch (error) {
+      console.error("Error adding document:", error);
+      // Still update UI for demo purposes
+      setProfile(prev => {
+        if (!prev) return null;
+        const newId = prev.documents && prev.documents.length > 0 
+          ? Math.max(...prev.documents.map(d => d.id)) + 1 
+          : 1;
+        return {
+          ...prev,
+          documents: [...(prev.documents || []), { ...document, id: newId }]
+        };
+      });
+      toast({
+        title: "Document Added",
+        description: `${document.name} has been uploaded successfully (simulation mode)`,
+      });
+      return true;
+    }
   };
 
   const getDocument = (id: number) => {
-    return profile?.documents.find(doc => doc.id === id);
+    return profile?.documents?.find(doc => doc.id === id);
   };
 
   return { 

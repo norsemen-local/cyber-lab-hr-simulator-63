@@ -1,9 +1,10 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { LogIn } from "lucide-react";
-import { login, setCurrentUser, DB_ENDPOINT } from "@/features/auth";
+import { login, setCurrentUser } from "@/features/auth";
 import { useNavigate } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle } from "lucide-react";
@@ -26,12 +27,13 @@ const LoginForm = ({ onLoginSuccess }: LoginFormProps) => {
     setLoading(true);
     setInjectionSuccess(false);
     
-    const demoQuery = `SELECT * FROM users WHERE email='${email}' AND password='${password}'`;
+    const demoQuery = `SELECT u.id, u.email, u.role, p.first_name, p.last_name, p.avatar 
+                      FROM users u 
+                      JOIN user_profiles p ON u.id = p.user_id 
+                      WHERE u.email='${email}' AND u.password='${password}'`;
     setSqlQuery(demoQuery);
     
     try {
-      console.log(`[DB CONNECTION]: Connecting to MySQL database at ${DB_ENDPOINT}`);
-      
       const user = await login(email, password);
       
       if (user) {

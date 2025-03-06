@@ -10,7 +10,10 @@ import { API_URL } from "../constants";
 export const login = async (email: string, password: string): Promise<User | null> => {
   try {
     // Show a simulated SQL query for educational purposes
-    const simulatedQuery = `SELECT * FROM users WHERE email='${email}' AND password='${password}'`;
+    const simulatedQuery = `SELECT u.id, u.email, u.role, p.first_name, p.last_name, p.avatar 
+                           FROM users u 
+                           JOIN user_profiles p ON u.id = p.user_id 
+                           WHERE u.email='${email}' AND u.password='${password}'`;
     console.log(`[SIMULATED SQL]: ${simulatedQuery}`);
     
     // Make the actual request to the server
