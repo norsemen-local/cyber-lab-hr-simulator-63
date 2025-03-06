@@ -310,82 +310,39 @@ jobs:
           # Wait additional time for services to start
           echo "Waiting an additional 2 minutes for all services to start..."
           sleep 120
-
-      - name: Verify and fix SSM agent
+      
+      - name: Install MySQL Agent
         run: |
-          INSTANCE_ID=${{ needs.deploy_resources.outputs.instance_id }}
-
-          echo "Verifying SSM agent status on instance $INSTANCE_ID..."
-
-          # Check if instance is already registered with SSM
-          SSM_ONLINE=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "ConnectionLost")
-
-          echo "SSM Agent status: $SSM_ONLINE"
-
-          # If SSM is working, we're done
-          if [ "$SSM_ONLINE" == "Online" ]; then
-            echo "SSM Agent is online and working properly."
-            exit 0
+          DB_INSTANCE=$(aws rds describe-db-instances --query "DBInstances[?DBInstanceIdentifier=='hr-portal-db']" --output json)
+          if [ -n "$DB_INSTANCE" ] && [ "$DB_INSTANCE" != "[]" ]; then
+            RDS_ENDPOINT=$(echo $DB_INSTANCE | jq -r '.[0].Endpoint.Address')
+            RDS_PORT=$(echo $DB_INSTANCE | jq -r '.[0].Endpoint.Port')
+            log "✅ Found RDS endpoint: $RDS_ENDPOINT:$RDS_PORT"
+            
+            # Make database initialization more robust on the EC2 instance
+            aws ssm send-command \
+              --document-name "AWS-RunShellScript" \
+              --targets "Key=InstanceIds,Values=$INSTANCE_ID" \
+              --parameters 'commands=[
+                "echo \"===== DATABASE INITIALIZATION =====\"",
+                "# Install MySQL client if not already installed",
+                "yum install -y mysql",
+                "cd /tmp/",
+                "wget https://repo.mysql.com//mysql84-community-release-el9-1.noarch.rpm",
+                "sudo yum localinstall mysql84-community-release-el9-1.noarch.rpm -y",
+                "sudo yum install mysql-community-server -y",
+                "# Create test connection script",
+                "echo \"CREATE DATABASE IF NOT EXISTS hr_portal; SHOW DATABASES;\" > /tmp/test_connection.sql",
+                "# Test connection to RDS",
+                "echo \"Testing connection to RDS...\"",
+                "mysql -h RDS_ENDPOINT -u admin -ppassword123 < /tmp/test_connection.sql || echo \"RDS connection test failed\"",
+                "echo \"===== DATABASE INITIALIZATION COMPLETE =====\""
+              ]' \
+              --comment "Initialize database connection" \
+              --output text
+          
+            log "✅ Database initialization command sent to instance"
           fi
-
-          # Otherwise try to restart the SSM agent using EC2 Instance Connect
-          echo "SSM Agent is not online. Attempting recovery..."
-
-          # First try: Use AWS EC2 Instance Connect to run commands directly on the instance
-          echo "Attempting to connect to instance using EC2 Instance Connect..."
-
-          # Check if instance is in a running state
-          INSTANCE_STATE=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].State.Name" --output text)
-
-          if [ "$INSTANCE_STATE" != "running" ]; then
-            echo "Instance is not in 'running' state (current state: $INSTANCE_STATE). Cannot attempt recovery."
-            echo "WARNING: Subsequent deployment steps may fail without SSM connectivity."
-            exit 0
-          fi
-
-          # Try to use EC2 Instance Connect to run the recovery commands
-          # We'll create a temporary SSH key for this purpose
-          echo "Generating temporary SSH key for EC2 Instance Connect..."
-          ssh-keygen -t rsa -f /tmp/temp_key -N "" -q
-
-          # Get the public key
-          PUB_KEY=$(cat /tmp/temp_key.pub)
-
-          # Get the instance's availability zone
-          AZ=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].Placement.AvailabilityZone" --output text)
-
-          # Try to push the public key to the instance
-          echo "Pushing SSH key to instance..."
-          aws ec2-instance-connect send-ssh-public-key \
-            --instance-id $INSTANCE_ID \
-            --availability-zone $AZ \
-            --instance-os-user ec2-user \
-            --ssh-public-key "$PUB_KEY"
-
-          # Sleep for a moment to allow the key to propagate
-          sleep 5
-
-          # Get the instance's public IP address
-          PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
-
-          echo "Attempting to connect to $PUBLIC_IP via SSH to restart SSM agent..."
-
-          # Use SSH with StrictHostKeyChecking=no to execute commands
-          ssh -i /tmp/temp_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 ec2-user@$PUBLIC_IP << 'EOF' || echo "SSH connection failed, but continuing..."
-          sudo amazon-linux-extras install -y amazon-ssm-agent
-          sudo systemctl enable amazon-ssm-agent
-          sudo systemctl restart amazon-ssm-agent
-          echo "SSM agent restarted at $(date)"
-          EOF
-
-          # Wait for the recovery to take effect
-          echo "Waiting for SSM agent recovery (60 seconds)..."
-          sleep 60
-
-          # Check again if recovery was successful
-          SSM_ONLINE_AFTER=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$INSTANCE_ID" --query "InstanceInformationList[0].PingStatus" --output text 2>/dev/null || echo "ConnectionLost")
-
-          echo "SSM Agent status after recovery attempt: $SSM_ONLINE_AFTER"
 
       - name: Setup Docker
         run: |
