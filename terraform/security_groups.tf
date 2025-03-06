@@ -1,4 +1,3 @@
-
 # Security Group for EC2
 resource "aws_security_group" "ec2_sg" {
   name        = "hr-portal-ec2-sg"
@@ -115,22 +114,13 @@ resource "aws_security_group" "rds_sg" {
   description = "Security group for HR Portal RDS instance"
   vpc_id      = aws_vpc.hr_portal_vpc.id
 
-  # Allow MySQL access from EC2 security group
+  # Allow MySQL access from EC2 security group only
   ingress {
     from_port       = 3306
     to_port         = 3306
     protocol        = "tcp"
     security_groups = [aws_security_group.ec2_sg.id]
     description     = "MySQL access from EC2"
-  }
-
-  # Allow MySQL access from anywhere for testing
-  ingress {
-    from_port   = 3306
-    to_port     = 3306
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "MySQL access from anywhere (for testing only)"
   }
 
   # Allow all outbound traffic

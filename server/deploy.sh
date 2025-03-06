@@ -83,7 +83,50 @@ DB_PASSWORD=$DB_PASSWORD_ESCAPED
 DB_NAME=hr_portal
 DB_PORT=3306
 PORT=80
+NODE_ENV=production
 ENVFILE
+
+    # Create API endpoint for database stats
+    cat > routes/database.js << ROUTEFILE
+const express = require('express');
+const mysql = require('mysql2/promise');
+const router = express.Router();
+
+// Database stats API endpoint
+router.get('/stats', async (req, res) => {
+  try {
+    // Create database connection
+    const connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      port: process.env.DB_PORT || 3306
+    });
+    
+    // Get user count
+    const [rows] = await connection.execute('SELECT COUNT(*) as count FROM users');
+    await connection.end();
+    
+    res.json({
+      success: true,
+      userCount: rows[0].count
+    });
+  } catch (error) {
+    console.error('Database stats error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve database statistics'
+    });
+  }
+});
+
+module.exports = router;
+ROUTEFILE
+
+    # Register the database routes in the main app
+    sed -i '/const app = express();/a const databaseRoutes = require("./routes/database");' index.js
+    sed -i '/app.use(cors());/a app.use("/api/database", databaseRoutes);' index.js
 
     # Run the database setup script to create tables and seed data
     echo "Setting up database tables and seeding data..."

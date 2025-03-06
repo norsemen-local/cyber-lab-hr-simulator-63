@@ -2,13 +2,12 @@
 # RDS Subnet Group
 resource "aws_db_subnet_group" "rds_subnet_group" {
   name       = "hr-portal-rds-subnet-group"
-  subnet_ids = [aws_subnet.public_subnet.id, aws_subnet.public_subnet_2.id]  # Use public subnets for testing
-
+  subnet_ids = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id]  # Use private subnets for security
+  
   tags = merge(local.common_tags, {
     Name = "HR Portal RDS Subnet Group"
   })
 }
-
 
 # RDS MySQL Instance
 resource "aws_db_instance" "hr_portal_db" {
@@ -25,10 +24,14 @@ resource "aws_db_instance" "hr_portal_db" {
   db_subnet_group_name    = aws_db_subnet_group.rds_subnet_group.name
   vpc_security_group_ids  = [aws_security_group.rds_sg.id]
   skip_final_snapshot     = true
-  publicly_accessible     = true  # Make publicly accessible for testing
-  multi_az                = false
-  deletion_protection     = false  # Ensure deletion protection is disabled
+  publicly_accessible     = false  # Make database private
+  multi_az                = true   # Enable Multi-AZ for high availability
+  deletion_protection     = true   # Enable deletion protection
 
+  backup_retention_period = 7      # Enable backups
+  backup_window           = "03:00-06:00"
+  maintenance_window      = "Mon:00:00-Mon:03:00"
+  
   tags = merge(local.common_tags, {
     Name = "hr-portal-db"
   })
