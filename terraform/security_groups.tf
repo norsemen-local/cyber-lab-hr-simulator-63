@@ -1,4 +1,3 @@
-
 # Security Group for EC2
 resource "aws_security_group" "ec2_sg" {
   name        = "hr-portal-ec2-sg"
@@ -120,7 +119,7 @@ resource "aws_security_group" "rds_sg" {
     from_port       = 3306
     to_port         = 3306
     protocol        = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # WARNING: Opens to the entire internet
+    security_groups = [aws_security_group.ec2_sg.id]
     description     = "MySQL access from EC2"
   }
 
@@ -136,6 +135,3 @@ resource "aws_security_group" "rds_sg" {
     Name = "hr-portal-rds-sg"
   })
 }
-
-
-
