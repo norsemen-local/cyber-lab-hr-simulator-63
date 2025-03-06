@@ -308,7 +308,7 @@ jobs:
           fi
 
           # Wait additional time for services to start
-          echo "Waiting an additional 2 minutes for all services to start..."
+          echo "Waiting an additional 20 seconds for all services to start..."
           sleep 20
       
       - name: Install MySQL Agent
