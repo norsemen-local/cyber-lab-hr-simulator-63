@@ -1,6 +1,6 @@
 
 # Use Node.js Alpine image for smaller size
-FROM node:18-alpine
+FROM node:18-bullseye
 
 # Set working directory
 WORKDIR /app
@@ -8,6 +8,10 @@ WORKDIR /app
 # Only copy package files first to leverage Docker caching for dependencies
 COPY package*.json ./
 
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
 # Install dependencies (including dev dependencies needed for build)
 RUN npm ci
 
