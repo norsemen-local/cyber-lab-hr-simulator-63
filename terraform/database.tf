@@ -2,7 +2,7 @@
 # RDS Subnet Group
 resource "aws_db_subnet_group" "rds_subnet_group" {
   name       = "hr-portal-rds-subnet-group"
-  subnet_ids = [aws_subnet.private_subnet.id, aws_subnet.private_subnet_2.id]  # Use private subnets
+  subnet_ids = [aws_subnet.public_subnet.id, aws_subnet.public_subnet_2.id]  # Move to public subnets
 
   tags = merge(local.common_tags, {
     Name = "HR Portal RDS Subnet Group"
