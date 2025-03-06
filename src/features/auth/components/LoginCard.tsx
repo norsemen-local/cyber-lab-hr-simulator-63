@@ -1,7 +1,6 @@
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import LoginForm from "./LoginForm";
-import DatabaseInfo from "./DatabaseInfo";
 
 interface LoginCardProps {
   onLoginSuccess: () => void;
@@ -20,7 +19,6 @@ const LoginCard = ({ onLoginSuccess }: LoginCardProps) => {
       </CardHeader>
       <CardContent>
         <LoginForm onLoginSuccess={onLoginSuccess} />
-        <DatabaseInfo />
       </CardContent>
       <CardFooter className="flex-col space-y-2">
         <p className="text-xs text-center w-full text-gray-500">
