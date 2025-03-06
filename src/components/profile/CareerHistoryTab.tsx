@@ -13,7 +13,7 @@ export interface CareerEntry {
   company: string;
   position: string;
   startDate: string;
-  endDate: string;
+  endDate?: string; // Make endDate optional to match the profile data structure
   description: string;
 }
 

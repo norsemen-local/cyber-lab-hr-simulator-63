@@ -45,6 +45,40 @@ const Profile = () => {
     );
   }
 
+  // Map the documents from the profile to the format expected by DocumentsTab
+  const formattedDocuments = profile?.documents?.map(doc => ({
+    id: doc.id,
+    name: doc.name,
+    date: doc.uploadDate, // Map uploadDate to date for compatibility
+    type: doc.type,
+    content: doc.content
+  })) || [];
+
+  // Create a wrapper function to convert between the document formats
+  const handleDocumentUpload = (document: { name: string; date: string; type: string; content?: string }) => {
+    return addDocument({
+      name: document.name,
+      type: document.type,
+      uploadDate: document.date, // Map date to uploadDate
+      content: document.content
+    });
+  };
+
+  // Create a wrapper function to convert document format for viewing
+  const handleViewDocument = (id: number) => {
+    const doc = getDocument(id);
+    if (doc) {
+      return {
+        id: doc.id,
+        name: doc.name,
+        date: doc.uploadDate, // Map uploadDate to date
+        type: doc.type,
+        content: doc.content
+      };
+    }
+    return undefined;
+  };
+
   return (
     <DashboardWithSidebar>
       <div className="flex flex-col md:flex-row gap-6">
@@ -106,15 +140,9 @@ const Profile = () => {
               
               <TabsContent value="documents" className="space-y-4">
                 <DocumentsTab 
-                  documents={profile?.documents?.map(doc => ({
-                    id: doc.id,
-                    name: doc.name,
-                    date: doc.uploadDate,
-                    type: doc.type,
-                    content: doc.content
-                  })) || []}
-                  onUpload={addDocument}
-                  onView={getDocument}
+                  documents={formattedDocuments}
+                  onUpload={handleDocumentUpload}
+                  onView={handleViewDocument}
                 />
               </TabsContent>
             </Tabs>
