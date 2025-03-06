@@ -1,10 +1,9 @@
-
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { LogIn } from "lucide-react";
-import { login, setCurrentUser } from "@/services/authService";
+import { login, setCurrentUser, DB_ENDPOINT } from "@/features/auth";
 import { useNavigate } from "react-router-dom";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle } from "lucide-react";
@@ -27,19 +26,15 @@ const LoginForm = ({ onLoginSuccess }: LoginFormProps) => {
     setLoading(true);
     setInjectionSuccess(false);
     
-    // Show the vulnerable SQL query that will be executed
     const demoQuery = `SELECT * FROM users WHERE email='${email}' AND password='${password}'`;
     setSqlQuery(demoQuery);
     
     try {
-      // Log the connection attempt - in a real app this would connect to an actual RDS instance
       console.log(`[DB CONNECTION]: Connecting to MySQL database at ${DB_ENDPOINT}`);
       
-      // Call the login function which has a REAL SQL injection vulnerability
       const user = await login(email, password);
       
       if (user) {
-        // Check if this was likely an injection attack
         if (email.includes("'") || email.includes("--")) {
           setInjectionSuccess(true);
           console.log("[SECURITY ALERT]: Potential SQL injection detected in successful login");
@@ -132,8 +127,5 @@ const LoginForm = ({ onLoginSuccess }: LoginFormProps) => {
     </form>
   );
 };
-
-// This would be the actual RDS endpoint in a real application
-const DB_ENDPOINT = "hr-portal-db.cluster-xxxxxxxxxx.us-east-1.rds.amazonaws.com";
 
 export default LoginForm;
